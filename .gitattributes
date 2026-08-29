@@ -1,0 +1,8 @@
+# Normalize everything to LF in the repository.
+# A CRLF in a bin shebang makes the published package unexecutable on
+# Linux and macOS, so this is correctness, not preference.
+* text=auto eol=lf
+
+# Generated SQLite fixtures are binary and must never be normalized.
+*.mmb binary
+*.emb binary

@@ -9,14 +9,22 @@ claude mcp add mmex -- npx -y mmex-mcp --db ~/finances.mmb
 
 No API key. Claude Code is already the model.
 
+> **Not on npm yet.** Until it is published, substitute a built checkout
+> everywhere `npx -y mmex-mcp` appears:
+>
+> ```bash
+> npm install && npm run build
+> claude mcp add mmex -- node "$PWD/dist/bin/server.js" --db ~/finances.mmb
+> ```
+
 ## Try it without your own data first
 
 You do not need a Money Manager EX file to evaluate this. Generate a synthetic
 one, with fabricated accounts, payees and 18 months of transactions:
 
 ```bash
-npx mmex-fixture --out demo.mmb
-claude mcp add mmex-demo -- npx -y mmex-mcp --db "$PWD/demo.mmb"
+node dist/bin/fixture.js --out demo.mmb     # or: npx mmex-fixture, once published
+claude mcp add mmex-demo -- node "$PWD/dist/bin/server.js" --db "$PWD/demo.mmb"
 ```
 
 Then ask, in Claude Code:

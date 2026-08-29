@@ -2,16 +2,38 @@
   "name": "mmex-mcp",
   "version": "0.1.0",
   "description": "Read-only Model Context Protocol server for Money Manager EX (MMEX) databases. Aggregate-first tools that encode MMEX's financial semantics so an assistant gets transfers, splits, soft deletes and multi-currency right.",
-  "keywords": ["mcp", "model-context-protocol", "moneymanagerex", "mmex", "personal-finance", "sqlite", "read-only"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "moneymanagerex",
+    "mmex",
+    "personal-finance",
+    "sqlite",
+    "read-only"
+  ],
   "license": "MIT",
   "author": "Eridan Winckler",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EriWinckler/mmex-mcp.git"
+  },
+  "homepage": "https://github.com/EriWinckler/mmex-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/EriWinckler/mmex-mcp/issues"
+  },
   "type": "module",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "bin": {
     "mmex-mcp": "./dist/bin/server.js",
     "mmex-fixture": "./dist/bin/fixture.js"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

@@ -5,12 +5,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { openReadOnly } from "../src/db/connection.js";
 import { MMEX_SCHEMA_DDL } from "../src/fixture/schema.js";
-import {
-  accountBalances,
-  incomeVsExpense,
-  searchTransactions,
-  spendingByCategory,
-} from "../src/semantics/analytics.js";
+import { accountBalances, incomeVsExpense, spendingByCategory } from "../src/semantics/analytics.js";
 import { CategoryTree } from "../src/semantics/categories.js";
 import { CurrencyResolver } from "../src/semantics/currency.js";
 

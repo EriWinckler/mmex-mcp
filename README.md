@@ -120,7 +120,7 @@ configuration.
 
 ## Status
 
-This is under active development. **Being straight about what works today:**
+Under active development. What works today:
 
 | | Status |
 |---|---|
@@ -129,10 +129,10 @@ This is under active development. **Being straight about what works today:**
 | Semantic layer (transfers, splits, deletes, FX, category tree) | Done |
 | Deterministic synthetic database generator | Done |
 | MCP server + Claude Code integration | Done |
-| Configurable LLM provider for the eval harness | Done |
+| Configurable LLM provider for the accuracy suite | Done |
 | `mmex_database_info` tool | Done |
 | Remaining 8 analytics tools | **In progress** |
-| Eval harness and published scorecard | **Planned** |
+| Answer-accuracy regression suite | **Planned** |
 | CI | **Planned** |
 
 **101 tests passing.** Typecheck and lint clean.
@@ -228,15 +228,17 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## Roadmap
 
-**v1** finishes the analytics surface and ships the eval scorecard:
+**v1** finishes the analytics surface:
 
 - The remaining 8 tools: balances, spending by category, income vs expense,
   transaction search, payees, budget vs actual, net worth, recurring items.
-- **An eval harness with a published scorecard.** Roughly 40 natural-language
-  questions with ground truth computed by hand-verified SQL, run twice: once
-  with these semantic tools, once with raw SQL access to the same database. The
-  README will carry the results table and an explanation of every question the
-  raw-SQL arm gets wrong. This is the point of the project.
+- **An answer-accuracy regression suite.** Unit tests prove the SQL is right;
+  they cannot prove an assistant given these tools actually answers a question
+  correctly. The suite asks roughly 40 natural-language questions whose answers
+  are computed independently by hand-verified SQL, and fails if the assistant's
+  answer disagrees. Running the same questions against raw SQL access is the
+  control: it shows which of the semantic rules are actually load-bearing, so a
+  rule cannot be quietly dropped without a test noticing.
 
 **Later:**
 
@@ -250,9 +252,12 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 Personal finance MCP servers exist for
 [MoneyWiz](https://github.com/jcvalerio/moneywiz-mcp-server),
 [Monarch Money](https://github.com/felixgalindo/monarch-money-mcp), MoneyMoney
-and others. None targets Money Manager EX, and none that I found publishes a
-conformance analysis against its host application or an eval scorecard against
-a raw-SQL baseline. Those two things are what this project is actually about.
+and others, and they were useful references for the general shape.
+
+None targets Money Manager EX, which is why this exists. The emphasis here is
+on matching the host application's semantics exactly and documenting where that
+differs from its published reports, because a finance answer that is subtly
+wrong is worse than no answer.
 
 ## License
 

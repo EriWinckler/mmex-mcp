@@ -144,11 +144,12 @@ flag and a drill-down path, never raw row dumps. A year of transactions does not
 fit usefully in a context window, and handing a model thousands of rows makes it
 do arithmetic it is bad at.
 
-### fixture: what makes the repo runnable by a stranger
+### fixture: test data that is safe to commit
 
-Real financial data can never be published and no reviewer owns an MMEX file, so
-a generated database is the only way this project can be evaluated or its
-scorecard reproduced.
+A real `.mmb` file must never end up in version control, and tests need data
+that does not change between runs. A generated database solves both, and it
+doubles as sample data for anyone who wants to try the server without pointing
+it at their own finances.
 
 Determinism took deliberate care: a fixed `page_size`, `journal_mode = DELETE`,
 a fixed anchor date rather than "today", mulberry32 for all randomness, and a
@@ -162,9 +163,9 @@ handle is planted, so a naive implementation produces visibly wrong answers.
 | Decision | Why | What it costs |
 |---|---|---|
 | TypeScript on the official SDK | Tier 1 SDK, `npx` distribution, largest MCP ecosystem | Not the fastest language for the data work |
-| `better-sqlite3` over `node:sqlite` | Works today, prebuilt binaries, no experimental warning in a reviewer's terminal | A native dependency; revisit when `node:sqlite` is stable |
+| `better-sqlite3` over `node:sqlite` | Stable today, prebuilt binaries, no experimental-feature warning on startup | A native dependency; revisit when `node:sqlite` is stable |
 | Integer minor units in `number` | Exact for the domain, and readable | Would need `bigint` past 2^53 minor units, which no personal database reaches |
-| Read-only in v1 | Write mode triples the risk surface (locking, integrity, backups) and adds nothing a reviewer reads | Cannot categorize or correct transactions |
+| Read-only in v1 | Write access to a finance database means locking, integrity and backup concerns, for a tool whose job is answering questions | Cannot categorize or correct transactions |
 | Aggregate-first tools | Row dumps blow the context window and push arithmetic onto the model | Some questions need a drill-down round trip |
 | Conform to the app, not the reports | The reports contradict each other and contain two bugs | Numbers differ from MMEX's own reports, hence CONFORMANCE.md |
 | Hand-rolled argument parsing | Keeps the dependency tree auditable, which is part of the safety claim | A little more code |

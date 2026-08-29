@@ -19,8 +19,8 @@ No API key. Claude Code is already the model.
 
 ## Try it without your own data first
 
-You do not need a Money Manager EX file to evaluate this. Generate a synthetic
-one, with fabricated accounts, payees and 18 months of transactions:
+You do not need a Money Manager EX file to try this. Generate a synthetic one,
+with fabricated accounts, payees and 18 months of transactions:
 
 ```bash
 node dist/bin/fixture.js --out demo.mmb     # or: npx mmex-fixture, once published

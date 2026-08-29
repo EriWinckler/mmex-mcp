@@ -5,10 +5,10 @@ import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_INDEXES } from "./schema.js";
 /**
  * Deterministic synthetic MMEX database.
  *
- * A stranger evaluating this repository has no MMEX file, and real financial
- * data can never be published, so a generated database is what makes the
- * server runnable and the eval scorecard reproducible. The same seed always
- * produces a byte-identical file, which is asserted by a test.
+ * A real .mmb file must never be committed, and tests need data that does not
+ * change between runs. A generated database solves both, and doubles as sample
+ * data for trying the server without pointing it at real finances. The same
+ * seed always produces a byte-identical file, which is asserted by a test.
  *
  * The data is not merely plausible, it is adversarial on purpose. Every
  * semantic trap this server exists to handle is planted here: transfers in

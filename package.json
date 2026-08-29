@@ -1,0 +1,36 @@
+{
+  "name": "mmex-mcp",
+  "version": "0.1.0",
+  "description": "Read-only Model Context Protocol server for Money Manager EX (MMEX) databases. Aggregate-first tools that encode MMEX's financial semantics so an assistant gets transfers, splits, soft deletes and multi-currency right.",
+  "keywords": ["mcp", "model-context-protocol", "moneymanagerex", "mmex", "personal-finance", "sqlite", "read-only"],
+  "license": "MIT",
+  "author": "Eridan Winckler",
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "bin": {
+    "mmex-mcp": "./dist/bin/server.js",
+    "mmex-fixture": "./dist/bin/fixture.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "verify": "npm run typecheck && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "better-sqlite3": "13.0.3",
+    "zod": "4.5.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.11",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

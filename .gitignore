@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+# Never commit real financial data. Only generated fixtures belong in this repo.
+*.mmb
+*.emb
+!test/fixtures/generated/*.mmb
+
+# Local eval runs may contain model output and API responses
+evals/runs/
+.env
+.env.*

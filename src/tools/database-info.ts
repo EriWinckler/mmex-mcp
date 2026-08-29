@@ -31,7 +31,14 @@ const outputSchema = {
   }),
   contents: z.object({
     accounts: z.number().int(),
-    liveTransactions: z.number().int().describe("Excludes void and soft-deleted rows."),
+    liveTransactions: z
+      .number()
+      .int()
+      .describe(
+        "Count of rows after excluding void and soft-deleted. Row count only: a raw " +
+          "SQL query that matches this number is still wrong, because the count says " +
+          "nothing about split attribution, transfer handling, or currency conversion.",
+      ),
     excludedTransactions: z
       .number()
       .int()

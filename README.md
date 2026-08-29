@@ -124,8 +124,12 @@ to "why does your number differ from my report".
   (`DELETE ... WHERE 1 = 0`, a no-op even if permitted) and returning the SQLite
   error code that refused it.
 - **No network access.** The server opens no sockets.
-- **The database path is never exposed**, so an assistant with shell access is
-  not handed a route around these semantics.
+- **The database path is never exposed.** It contains your account name and
+  would otherwise land in transcripts, screen shares and pasted bug reports.
+  This is privacy hygiene, not an access control: an assistant with shell access
+  can still find the file via `ps`, the client config, or `find`. The defense
+  against a raw query is that it gives wrong answers, which is what the semantic
+  layer and the conformance document are for.
 - `--redact` for screen sharing; `--snapshot` to avoid touching a live file.
 - API keys are read only from named environment variables, never from a config
   file; an inline key is rejected with an error.

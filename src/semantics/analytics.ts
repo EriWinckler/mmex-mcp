@@ -38,6 +38,27 @@ export class AnalyticsError extends Error {
   override readonly name = "AnalyticsError";
 }
 
+/**
+ * SQL multiplier that turns a decimal amount into integer minor units.
+ *
+ * Built from placesFromScale's validated output, NOT from CURRENCYFORMATS_V1
+ * .SCALE directly. The raw column is nullable and unconstrained, and using it
+ * meant the SQL multiplier and the JS `places` could disagree: SCALE = 0 made
+ * every balance in that currency read 0.00, SCALE = 50 halved it, and a
+ * negative SCALE flipped its sign, all without an error. Hardening
+ * placesFromScale to fall back rather than throw is what turned that from a
+ * loud failure into a silent wrong number, so the two must be derived from one
+ * source.
+ */
+function scaleExpression(resolver: CurrencyResolver, currencyIdSql: string): string {
+  const arms = resolver
+    .all()
+    .map((c) => `WHEN ${Number(c.id)} THEN ${10 ** c.places}`)
+    .join(" ");
+  const fallback = 10 ** resolver.basePlaces;
+  return arms === "" ? String(fallback) : `CASE ${currencyIdSql} ${arms} ELSE ${fallback} END`;
+}
+
 function rangeClause(range: DateRange, alias = "t"): { sql: string; params: Record<string, string> } {
   if (range.from !== undefined && range.to !== undefined && range.from > range.to) {
     // Silently returning nothing would look like "you spent nothing", which is
@@ -123,6 +144,7 @@ export function accountBalances(
   resolver: CurrencyResolver,
   options: { readonly asOf?: string; readonly includeClosed?: boolean } = {},
 ): AccountBalancesResult {
+  const scale = scaleExpression(resolver, "a.CURRENCYID");
   const asOfClause = options.asOf !== undefined ? ` AND ${transactionDate("t")} <= @asOf` : "";
   const statusClause = options.includeClosed === true ? "" : " AND a.STATUS <> 'Closed'";
 
@@ -138,10 +160,10 @@ export function accountBalances(
     txCount: number;
   }>(
     `SELECT a.ACCOUNTID, a.ACCOUNTNAME, a.ACCOUNTTYPE, a.STATUS, a.CURRENCYID,
-            CAST(ROUND(IFNULL(a.INITIALBAL, 0) * IFNULL(cf.SCALE, 100)) AS INTEGER) AS initialUnits,
-            SUM(CAST(ROUND((${accountFlow("t", "a.ACCOUNTID")}) * IFNULL(cf.SCALE, 100)) AS INTEGER)) AS flowUnits,
+            CAST(ROUND(IFNULL(a.INITIALBAL, 0) * ${scale}) AS INTEGER) AS initialUnits,
+            SUM(CAST(ROUND((${accountFlow("t", "a.ACCOUNTID")}) * ${scale}) AS INTEGER)) AS flowUnits,
             SUM(CASE WHEN IFNULL(t.STATUS,'') = 'R'
-                     THEN CAST(ROUND((${accountFlow("t", "a.ACCOUNTID")}) * IFNULL(cf.SCALE, 100)) AS INTEGER)
+                     THEN CAST(ROUND((${accountFlow("t", "a.ACCOUNTID")}) * ${scale}) AS INTEGER)
                      ELSE 0 END) AS reconciledUnits,
             COUNT(t.TRANSID) AS txCount
        FROM ACCOUNTLIST_V1 a
@@ -279,7 +301,7 @@ export function spendingByCategory(
 
   // Anything not a Deposit is a Withdrawal, matching MMEX's parser default.
   const sign = `CASE WHEN ${transCode("t")} = 'DEPOSIT' THEN 1 ELSE -1 END`;
-  const scale = "IFNULL(cf.SCALE, 100)";
+  const scale = scaleExpression(resolver, "a.CURRENCYID");
   const common =
     `${liveRows("t")}` +
     ` AND ${transCode("t")} <> 'TRANSFER'` +
@@ -480,7 +502,7 @@ export function incomeVsExpense(
     options.accountIds !== undefined && options.accountIds.length > 0
       ? ` AND t.ACCOUNTID IN (${options.accountIds.map((id) => Number(id)).join(",")})`
       : "";
-  const scale = "IFNULL(cf.SCALE, 100)";
+  const scale = scaleExpression(resolver, "a.CURRENCYID");
 
   const rows = db.query<{
     period: string;
@@ -689,6 +711,7 @@ export function searchTransactions(
     );
   }
 
+  const scale = scaleExpression(resolver, "a.CURRENCYID");
   const where = clauses.join(" AND ");
   const limit = Math.max(1, Math.min(options.limit ?? 25, 200));
   const offset = Math.max(0, options.offset ?? 0);
@@ -717,7 +740,7 @@ export function searchTransactions(
   }>(
     `SELECT t.TRANSID, ${transactionDate("t")} AS day, t.ACCOUNTID, a.ACCOUNTNAME,
             p.PAYEENAME, t.CATEGID, t.TRANSCODE, t.STATUS, t.NOTES, a.CURRENCYID,
-            CAST(ROUND(t.TRANSAMOUNT * IFNULL(cf.SCALE, 100)) AS INTEGER) AS units,
+            CAST(ROUND(t.TRANSAMOUNT * ${scale}) AS INTEGER) AS units,
             (SELECT COUNT(*) FROM SPLITTRANSACTIONS_V1 s WHERE s.TRANSID = t.TRANSID) AS splitCount
        FROM CHECKINGACCOUNT_V1 t
        JOIN ACCOUNTLIST_V1 a ON a.ACCOUNTID = t.ACCOUNTID

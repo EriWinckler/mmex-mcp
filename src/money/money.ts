@@ -62,7 +62,9 @@ export function placesFromScale(scale: number | null | undefined): number {
 
 function assertSafe(units: number, context: string): number {
   if (!Number.isSafeInteger(units)) {
-    throw new MoneyError(`${context} produced a value outside safe integer range: ${units}`);
+    // Deliberately does not include the value. This message can reach a model
+    // or a log, and the value is the user's money.
+    throw new MoneyError(`${context} produced a value outside the safe integer range`);
   }
   return units;
 }

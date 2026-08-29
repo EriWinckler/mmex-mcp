@@ -298,3 +298,43 @@ describe("a capped aggregate stays reconcilable", () => {
     expect(shown).toBe(result.totalBase.units);
   });
 });
+
+describe("a corrupt SCALE cannot silently change an amount", () => {
+  function scaleDb(scale: string): MmexDatabase {
+    const d = mkdtempSync(join(tmpdir(), "mmex-scale-"));
+    const path = join(d, "s.mmb");
+    const w = new Database(path);
+    for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
+    w.exec(
+      "INSERT INTO INFOTABLE_V1 (INFONAME,INFOVALUE) VALUES ('BaseCurrencyID','1');" +
+        `INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID,CURRENCYNAME,PFX_SYMBOL,SFX_SYMBOL,DECIMAL_POINT,GROUP_SEPARATOR,UNIT_NAME,CENT_NAME,SCALE,BASECONVRATE,CURRENCY_SYMBOL,CURRENCY_TYPE) VALUES (1,'USD','$','','.',',','','',${scale},1.0,'USD','Base');` +
+        "INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,INITIALBAL,INITIALDATE,FAVORITEACCT,CURRENCYID) VALUES (1,'A','Checking','Open',100.00,'2026-01-01','TRUE',1);" +
+        "INSERT INTO CHECKINGACCOUNT_V1 (TRANSID,ACCOUNTID,TOACCOUNTID,PAYEEID,TRANSCODE,TRANSAMOUNT,STATUS,CATEGID,TRANSDATE,DELETEDTIME,TOTRANSAMOUNT) VALUES (1,1,NULL,1,'Deposit',250.50,'',1,'2026-01-05','',0);",
+    );
+    w.close();
+    return openReadOnly(path);
+  }
+
+  // The SQL multiplier used to come from the raw SCALE column while `places`
+  // came from placesFromScale. They disagreed exactly where placesFromScale was
+  // hardened to fall back: SCALE 0 made every balance read 0.00, 50 halved it,
+  // and a negative flipped the sign, all with no error. Hardening the fallback
+  // is what turned a loud failure into a silent wrong number.
+  it.each(["100", "NULL", "0", "50", "-100", "0.01"])("reports 350.50 with SCALE = %s", (scale) => {
+    const db2 = scaleDb(scale);
+    const result = accountBalances(db2, new CurrencyResolver(db2));
+    const balance = result.accounts[0]?.balance;
+    db2.close();
+    expect(formatMinor(balance ?? { units: 0, places: 2 })).toBe("350.50");
+  });
+
+  it("still honors a legitimate non-default precision", () => {
+    // SCALE 1 is a real zero-decimal currency, not corruption.
+    const db2 = scaleDb("1");
+    const result = accountBalances(db2, new CurrencyResolver(db2));
+    const balance = result.accounts[0]?.balance;
+    db2.close();
+    expect(balance?.places).toBe(0);
+    expect(formatMinor(balance ?? { units: 0, places: 0 })).toBe("351");
+  });
+});

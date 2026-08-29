@@ -50,11 +50,19 @@ Full details in [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md).
 
 ## Tools
 
-| Tool | Returns |
+| Tool | Answers |
 |---|---|
-| `mmex_database_info` | Schema version, base currency, date range, account and transaction counts, and the server's read-only status |
+| `mmex_spending_by_category` | Where did my money go? Totals by category, optionally rolled up to top level |
+| `mmex_account_balances` | How much do I have? Per account and net worth, with reconciled balances |
+| `mmex_income_vs_expense` | Am I saving? Income, expense and net per month, quarter or year |
+| `mmex_transactions` | Which transactions make up that total? Paged, filterable, newest first |
+| `mmex_categories` | The category tree, for turning a name into an id |
+| `mmex_database_info` | What is in this database, and is the server actually read-only |
 
-More are in progress; see [Status](#status).
+Every tool returns exact decimal amounts in your base currency, plus a `basis`
+block saying how the figure was produced: which rate date was used, and what was
+excluded. When a number disagrees with a Money Manager EX report, that block
+plus [docs/CONFORMANCE.md](docs/CONFORMANCE.md) is the explanation.
 
 ## Status
 
@@ -67,14 +75,11 @@ Early. The foundation is built and tested; the analytics surface is not.
 | MMEX semantics (transfers, splits, deletes, currency, categories) | Done |
 | Synthetic database generator | Done |
 | MCP server, Claude Code integration, configuration | Done |
-| `mmex_database_info` | Done |
-| Spending by category, balances, income vs expense, transactions, categories | In progress |
+| Six tools: spending, balances, income vs expense, transactions, categories, database info | Done |
 | Answer-accuracy regression suite | Planned |
+| Encrypted `.emb` support, optional write mode | Planned |
 
-111 tests. Typecheck and lint clean.
-
-**Today this server reports on a database but cannot yet answer "what did I
-spend on groceries last quarter".** That needs the tools listed as in progress.
+148 tests. Typecheck and lint clean.
 
 ## Why the queries are not obvious
 
@@ -154,8 +159,6 @@ Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-- Spending by category, account balances, income vs expense, transaction search,
-  category resolver.
 - An answer-accuracy regression suite: unit tests prove the SQL is right, but
   not that an assistant given these tools answers correctly. Running the same
   questions against raw SQL is the control, showing which semantic rules are

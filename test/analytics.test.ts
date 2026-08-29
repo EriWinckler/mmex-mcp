@@ -6,7 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type MmexDatabase, openReadOnly } from "../src/db/connection.js";
 import { MMEX_SCHEMA_DDL } from "../src/fixture/schema.js";
 import { formatMinor } from "../src/money/money.js";
-import { accountBalances, incomeVsExpense, spendingByCategory } from "../src/semantics/analytics.js";
+import {
+  accountBalances,
+  incomeVsExpense,
+  searchTransactions,
+  spendingByCategory,
+} from "../src/semantics/analytics.js";
 import { CategoryTree } from "../src/semantics/categories.js";
 import { CurrencyResolver } from "../src/semantics/currency.js";
 
@@ -201,5 +206,66 @@ describe("income vs expense", () => {
     const y = incomeVsExpense(db, resolver, { groupBy: "year" });
     expect(y.periods.map((p) => p.period)).toEqual(["2026"]);
     expect(formatMinor(y.periods[0]?.netBase ?? { units: 0, places: 2 })).toBe("1804.00");
+  });
+});
+
+describe("transaction search", () => {
+  it("labels a foreign amount with the account's own currency, not the base", () => {
+    // Regression: the tool looked up currency id 0, which does not exist, so a
+    // euro transaction was labelled USD while carrying a euro figure.
+    const result = searchTransactions(db, resolver, tree, { accountIds: [2] });
+    const row = result.rows[0];
+    expect(row?.currency).toBe("EUR");
+    expect(formatMinor(row?.amount ?? { units: 0, places: 2 })).toBe("10.00");
+    // and the base conversion is separate, at that date's rate
+    expect(formatMinor(row?.amountBase ?? { units: 0, places: 2 })).toBe("16.00");
+  });
+
+  it("marks split transactions rather than showing the parent's sentinel category", () => {
+    const result = searchTransactions(db, resolver, tree, { from: "2026-01-28", to: "2026-01-28" });
+    const split = result.rows.find((r) => r.transactionId === 7);
+    expect(split?.hasSplits).toBe(true);
+    expect(split?.category).toBe("(split)");
+  });
+
+  it("includes subcategories when filtering by a parent category", () => {
+    // Food (id 1) has Groceries (2) and Dining (3) beneath it.
+    const result = searchTransactions(db, resolver, tree, { categoryId: 1 });
+    const ids = result.rows.map((r) => r.transactionId).sort((x, y) => x - y);
+    // T1 Groceries, T6 Dining duplicate, T7 via its Groceries split, T8 Groceries
+    expect(ids).toContain(1);
+    expect(ids).toContain(6);
+    expect(ids).toContain(7);
+    expect(ids).toContain(8);
+  });
+
+  it("excludes transfers by default and includes them on request", () => {
+    const without = searchTransactions(db, resolver, tree);
+    const withTransfers = searchTransactions(db, resolver, tree, { includeTransfers: true });
+    expect(without.rows.some((r) => r.type === "Transfer")).toBe(false);
+    expect(withTransfers.rows.some((r) => r.type === "Transfer")).toBe(true);
+  });
+
+  it("excludes void and soft-deleted rows from search too", () => {
+    const result = searchTransactions(db, resolver, tree);
+    const ids = result.rows.map((r) => r.transactionId);
+    expect(ids).not.toContain(4); // soft-deleted
+    expect(ids).not.toContain(5); // void
+    expect(ids).toContain(6); // duplicate: real money
+  });
+
+  it("pages, and reports the true total", () => {
+    const first = searchTransactions(db, resolver, tree, { limit: 2, offset: 0 });
+    const second = searchTransactions(db, resolver, tree, { limit: 2, offset: 2 });
+    expect(first.rows).toHaveLength(2);
+    // Live and non-transfer: T1, T2, T6 (duplicate), T7, T8. T3 is a transfer,
+    // T4 is soft-deleted, T5 is void.
+    expect(first.totalMatching).toBe(5);
+    expect(first.rows[0]?.transactionId).not.toBe(second.rows[0]?.transactionId);
+  });
+
+  it("treats LIKE wildcards in a search term as literal characters", () => {
+    const all = searchTransactions(db, resolver, tree, { textContains: "%" });
+    expect(all.totalMatching).toBe(0);
   });
 });

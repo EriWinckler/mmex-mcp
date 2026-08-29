@@ -1,5 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { MmexDatabase } from "../db/connection.js";
+import { CategoryTree } from "../semantics/categories.js";
+import { CurrencyResolver } from "../semantics/currency.js";
+import { registerAnalyticsTools } from "../tools/analytics-tools.js";
 import { registerDatabaseInfo } from "../tools/database-info.js";
 import type { ServerContext } from "./context.js";
 
@@ -18,7 +21,12 @@ export interface BuildOptions {
  * process, over an in-memory transport, without spawning a subprocess.
  */
 export function buildServer(options: BuildOptions): { server: McpServer; context: ServerContext } {
-  const context: ServerContext = { db: options.db, redact: options.redact ?? false };
+  const context: ServerContext = {
+    db: options.db,
+    resolver: new CurrencyResolver(options.db),
+    tree: new CategoryTree(options.db),
+    redact: options.redact ?? false,
+  };
 
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
@@ -41,6 +49,7 @@ export function buildServer(options: BuildOptions): { server: McpServer; context
   );
 
   registerDatabaseInfo(server, context);
+  registerAnalyticsTools(server, context);
 
   return { server, context };
 }

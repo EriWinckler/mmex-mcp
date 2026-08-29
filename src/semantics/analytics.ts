@@ -484,3 +484,200 @@ export function incomeVsExpense(
     basis,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Transaction search
+// ---------------------------------------------------------------------------
+
+export interface TransactionRow {
+  readonly transactionId: number;
+  readonly date: string;
+  readonly accountId: number;
+  readonly account: string;
+  readonly payee: string;
+  readonly categoryId: number;
+  readonly category: string;
+  readonly type: string;
+  readonly status: string;
+  /** Symbol of the account's own currency, for labelling `amount`. */
+  readonly currency: string;
+  /** In the account's own currency. */
+  readonly amount: Minor;
+  /** Converted at this transaction's own date. */
+  readonly amountBase: Minor;
+  readonly hasSplits: boolean;
+  readonly notes: string;
+}
+
+export interface SearchResult {
+  readonly rows: readonly TransactionRow[];
+  readonly totalMatching: number;
+  readonly basis: RateBasis;
+}
+
+export interface SearchOptions extends DateRange {
+  readonly accountIds?: readonly number[];
+  /** Matches this category, or any of its descendants. */
+  readonly categoryId?: number;
+  readonly payeeContains?: string;
+  readonly textContains?: string;
+  /** Magnitude bounds, in the account's own currency. */
+  readonly minAmount?: number;
+  readonly maxAmount?: number;
+  readonly includeTransfers?: boolean;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * Individual transactions, so an aggregate can be checked rather than trusted.
+ *
+ * A category filter matches descendants too: asking for "Food" should return
+ * the coffees filed under Food:Dining:Coffee, which is what a person means.
+ * Split rows are matched through their parent, and the parent is returned, so
+ * the caller sees the transaction that actually exists.
+ */
+export function searchTransactions(
+  db: MmexDatabase,
+  resolver: CurrencyResolver,
+  tree: CategoryTree,
+  options: SearchOptions = {},
+): SearchResult {
+  const clauses: string[] = [liveRows("t")];
+  const params: Record<string, string | number> = {};
+
+  const { sql: range, params: rangeParams } = rangeClause(options);
+  if (range !== "") clauses.push(range.replace(/^ AND /, ""));
+  Object.assign(params, rangeParams);
+
+  if (options.accountIds !== undefined && options.accountIds.length > 0) {
+    const ids = options.accountIds.map((id) => Number(id)).join(",");
+    clauses.push(`(t.ACCOUNTID IN (${ids}) OR t.TOACCOUNTID IN (${ids}))`);
+  }
+  if (options.includeTransfers !== true) {
+    clauses.push("t.TRANSCODE <> 'Transfer'");
+  }
+  if (options.payeeContains !== undefined && options.payeeContains !== "") {
+    clauses.push("p.PAYEENAME LIKE @payee ESCAPE '\\'");
+    params.payee = `%${escapeLike(options.payeeContains)}%`;
+  }
+  if (options.textContains !== undefined && options.textContains !== "") {
+    clauses.push(
+      "(t.NOTES LIKE @text ESCAPE '\\' OR t.TRANSACTIONNUMBER LIKE @text ESCAPE '\\' OR p.PAYEENAME LIKE @text ESCAPE '\\')",
+    );
+    params.text = `%${escapeLike(options.textContains)}%`;
+  }
+  if (options.minAmount !== undefined) {
+    clauses.push("ABS(t.TRANSAMOUNT) >= @minAmount");
+    params.minAmount = options.minAmount;
+  }
+  if (options.maxAmount !== undefined) {
+    clauses.push("ABS(t.TRANSAMOUNT) <= @maxAmount");
+    params.maxAmount = options.maxAmount;
+  }
+  if (options.categoryId !== undefined) {
+    // Descendants included, resolved in TypeScript because the tree is already
+    // built and a recursive CTE here would duplicate its cycle guard.
+    const wanted = new Set<number>([options.categoryId]);
+    for (const node of tree.all()) {
+      if (tree.rootOf(node.id) === undefined) continue;
+      let cursor: number | undefined = node.id;
+      const seen = new Set<number>();
+      while (cursor !== undefined && !seen.has(cursor)) {
+        seen.add(cursor);
+        if (cursor === options.categoryId) {
+          wanted.add(node.id);
+          break;
+        }
+        cursor = tree.get(cursor)?.parentId;
+        if (cursor !== undefined && cursor <= 0) break;
+      }
+    }
+    const ids = [...wanted].map((id) => Number(id)).join(",");
+    clauses.push(
+      `(t.CATEGID IN (${ids}) OR EXISTS (SELECT 1 FROM SPLITTRANSACTIONS_V1 s2 WHERE s2.TRANSID = t.TRANSID AND s2.CATEGID IN (${ids})))`,
+    );
+  }
+
+  const where = clauses.join(" AND ");
+  const limit = Math.max(1, Math.min(options.limit ?? 25, 200));
+  const offset = Math.max(0, options.offset ?? 0);
+
+  const total = db.queryOne<{ n: number }>(
+    `SELECT COUNT(*) n FROM CHECKINGACCOUNT_V1 t
+       JOIN ACCOUNTLIST_V1 a ON a.ACCOUNTID = t.ACCOUNTID
+       LEFT JOIN PAYEE_V1 p ON p.PAYEEID = t.PAYEEID
+      WHERE ${where}`,
+    params,
+  );
+
+  const rows = db.query<{
+    TRANSID: number;
+    day: string;
+    ACCOUNTID: number;
+    ACCOUNTNAME: string;
+    PAYEENAME: string | null;
+    CATEGID: number | null;
+    TRANSCODE: string;
+    STATUS: string | null;
+    NOTES: string | null;
+    CURRENCYID: number;
+    units: number;
+    splitCount: number;
+  }>(
+    `SELECT t.TRANSID, ${transactionDate("t")} AS day, t.ACCOUNTID, a.ACCOUNTNAME,
+            p.PAYEENAME, t.CATEGID, t.TRANSCODE, t.STATUS, t.NOTES, a.CURRENCYID,
+            CAST(ROUND(t.TRANSAMOUNT * IFNULL(cf.SCALE, 100)) AS INTEGER) AS units,
+            (SELECT COUNT(*) FROM SPLITTRANSACTIONS_V1 s WHERE s.TRANSID = t.TRANSID) AS splitCount
+       FROM CHECKINGACCOUNT_V1 t
+       JOIN ACCOUNTLIST_V1 a ON a.ACCOUNTID = t.ACCOUNTID
+       LEFT JOIN CURRENCYFORMATS_V1 cf ON cf.CURRENCYID = a.CURRENCYID
+       LEFT JOIN PAYEE_V1 p ON p.PAYEEID = t.PAYEEID
+      WHERE ${where}
+      ORDER BY day DESC, t.TRANSID DESC
+      LIMIT @limit OFFSET @offset`,
+    { ...params, limit, offset },
+  );
+
+  const basePlaces = resolver.basePlaces;
+  const basis: RateBasis = { kind: "transaction-date" };
+
+  return {
+    rows: rows.map((row) => {
+      const currency = resolver.info(row.CURRENCYID);
+      const places = currency?.places ?? basePlaces;
+      const native: Minor = { units: row.units, places };
+      const amountBase =
+        row.CURRENCYID === resolver.baseCurrencyId && places === basePlaces
+          ? native
+          : convertMinor(
+              native,
+              row.CURRENCYID === resolver.baseCurrencyId ? 1 : resolver.rateFor(row.CURRENCYID, row.day),
+              basePlaces,
+            );
+      return {
+        transactionId: row.TRANSID,
+        date: row.day,
+        accountId: row.ACCOUNTID,
+        account: row.ACCOUNTNAME,
+        payee: row.PAYEENAME ?? "(none)",
+        categoryId: row.CATEGID ?? -1,
+        category: row.splitCount > 0 ? "(split)" : tree.nameOf(row.CATEGID),
+        type: row.TRANSCODE,
+        status: row.STATUS ?? "",
+        currency: currency?.symbol ?? String(row.CURRENCYID),
+        amount: native,
+        amountBase,
+        hasSplits: row.splitCount > 0,
+        notes: row.NOTES ?? "",
+      };
+    }),
+    totalMatching: total?.n ?? 0,
+    basis,
+  };
+}
+
+/** LIKE treats % and _ as wildcards; a user searching for them means them. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}

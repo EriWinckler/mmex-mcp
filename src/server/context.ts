@@ -1,8 +1,17 @@
 import type { MmexDatabase } from "../db/connection.js";
+import type { CategoryTree } from "../semantics/categories.js";
+import type { CurrencyResolver } from "../semantics/currency.js";
 
 /** Shared state every tool handler receives. */
 export interface ServerContext {
   readonly db: MmexDatabase;
+  /**
+   * Built once at startup, not per call. Both read the whole of their table and
+   * cache, so rebuilding them for every tool invocation would re-query the
+   * database on every question the user asks.
+   */
+  readonly resolver: CurrencyResolver;
+  readonly tree: CategoryTree;
   /**
    * Replace payee names, account names, and notes with stable placeholders.
    *

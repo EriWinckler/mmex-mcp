@@ -77,7 +77,7 @@ describe("mmex_database_info", () => {
     const { client, db } = await connect();
     const result = await client.callTool({ name: "mmex_database_info", arguments: {} });
     const structured = result.structuredContent as {
-      database: { schemaVersion: string; baseCurrency: string };
+      database: { schemaVersion: string; baseCurrency: string; databaseName: string };
       contents: {
         accounts: number;
         liveTransactions: number;
@@ -96,25 +96,33 @@ describe("mmex_database_info", () => {
     db.close();
   });
 
-  it("actually redacts the database path, not just reports the flag", async () => {
-    // Regression: redactName/maybeRedact existed but no tool called them, so
-    // --redact was documented and did nothing. A filesystem path is
-    // identifying: /home/jsmith/finances.mmb names a person.
-    const plain = await connect(false);
-    const plainResult = await plain.client.callTool({ name: "mmex_database_info", arguments: {} });
-    const plainPath = (plainResult.structuredContent as { database: { path: string } }).database.path;
-    await plain.client.close();
-    plain.db.close();
+  it("never emits an absolute path, redacted or not", async () => {
+    // A Bash-capable client handed the absolute path can run sqlite3 against
+    // the database directly, bypassing every semantic rule here and producing
+    // confidently wrong numbers. The path is not needed to answer any question,
+    // so it is never exposed.
+    for (const redact of [false, true]) {
+      const { client, db } = await connect(redact);
+      const result = await client.callTool({ name: "mmex_database_info", arguments: {} });
+      const database = (
+        result.structuredContent as {
+          database: { databaseName: string; usingSnapshot: boolean };
+        }
+      ).database;
 
-    const redacted = await connect(true);
-    const redactedResult = await redacted.client.callTool({ name: "mmex_database_info", arguments: {} });
-    const redactedPath = (redactedResult.structuredContent as { database: { path: string } }).database.path;
-    await redacted.client.close();
-    redacted.db.close();
+      expect(database.databaseName, `redact=${redact}`).toBe("demo.mmb");
+      expect(database.databaseName).not.toContain("/");
+      expect(database.databaseName).not.toContain("\\");
+      expect(database.usingSnapshot).toBe(false);
 
-    expect(plainPath).toContain("/");
-    expect(redactedPath).not.toContain("/");
-    expect(redactedPath).toBe("demo.mmb");
+      // Belt and braces: no field anywhere in the payload looks like a path.
+      const serialized = JSON.stringify(result.structuredContent);
+      expect(serialized, `redact=${redact}`).not.toContain(dbPath);
+      expect(serialized).not.toMatch(/\/(home|Users|tmp)\//);
+
+      await client.close();
+      db.close();
+    }
   });
 
   it("reports schema compatibility rather than silently trusting the database", async () => {

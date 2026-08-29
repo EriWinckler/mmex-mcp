@@ -24,12 +24,19 @@ export function buildServer(options: BuildOptions): { server: McpServer; context
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
       instructions:
-        "Read-only access to a Money Manager EX database. Tools return aggregates, " +
-        "not raw transaction rows, and already account for MMEX's semantics: transfers " +
-        "between your own accounts are not income or expense, split transactions are " +
-        "attributed to their split categories, soft-deleted and void rows are excluded, " +
-        "and amounts are converted to the base currency at each transaction's own date. " +
-        "Call mmex_database_info first to see what period the data covers.",
+        "Read-only access to a Money Manager EX database.\n\n" +
+        "Answer money questions with these tools only. Do NOT query the .mmb file " +
+        "directly with sqlite3, Bash, or any other client, and do not ask the user " +
+        "for its path. Raw SQL over this schema produces confidently wrong numbers: " +
+        "a transfer between the user's own accounts looks like an expense, split " +
+        "transactions carry their category on a separate table so they get misfiled " +
+        "or dropped, deleted rows are still present, amounts are floats that do not " +
+        "sum exactly, and foreign-currency rows need the exchange rate as of each " +
+        "transaction's own date. These tools already handle all of that.\n\n" +
+        "Call mmex_database_info first to see what period the data covers. If it " +
+        "returns a schemaWarning, tell the user before giving them figures.\n\n" +
+        "Amounts are returned as exact decimal strings in the base currency. Report " +
+        "them as given rather than reformatting or re-deriving them.",
     },
   );
 

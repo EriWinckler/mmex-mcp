@@ -1,15 +1,15 @@
+import { basename } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { liveRows } from "../semantics/rules.js";
-import { maybeRedactPath, type ServerContext } from "../server/context.js";
+import type { ServerContext } from "../server/context.js";
 
 const outputSchema = {
   database: z.object({
-    path: z
+    databaseName: z
       .string()
-      .describe(
-        "Path opened. Differs from the source when running with --snapshot. Basename only under --redact.",
-      ),
+      .describe("File name of the database. The full path is deliberately not exposed."),
+    usingSnapshot: z.boolean().describe("Whether a temporary copy is being read instead of the live file."),
     schemaVersion: z.string().nullable().describe("MMEX DataVersion from INFOTABLE_V1."),
     schemaVerified: z
       .boolean()
@@ -84,7 +84,12 @@ export function registerDatabaseInfo(server: McpServer, context: ServerContext):
 
       const structuredContent = {
         database: {
-          path: maybeRedactPath(context, db.openedPath),
+          // Deliberately the basename only. A Bash-capable client handed an
+          // absolute path can run sqlite3 against the database directly, which
+          // bypasses every semantic rule in this server and produces confidently
+          // wrong numbers. Nothing here needs the path.
+          databaseName: basename(db.openedPath),
+          usingSnapshot: db.openedPath !== db.sourcePath,
           schemaVersion: db.schema.version,
           schemaVerified: db.schema.verified,
           schemaWarning: db.schema.warning,

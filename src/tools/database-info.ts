@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { liveRows } from "../semantics/rules.js";
 import type { ServerContext } from "../server/context.js";
 
 const outputSchema = {
@@ -17,8 +18,13 @@ const outputSchema = {
   }),
   contents: z.object({
     accounts: z.number().int(),
-    liveTransactions: z.number().int().describe("Excludes soft-deleted rows."),
-    excludedTransactions: z.number().int().describe("Soft-deleted, void, or duplicate."),
+    liveTransactions: z.number().int().describe("Excludes void and soft-deleted rows."),
+    excludedTransactions: z
+      .number()
+      .int()
+      .describe(
+        "Void or soft-deleted. Duplicate ('D') rows are NOT excluded, matching the MMEX desktop app.",
+      ),
     earliestDate: z.string().nullable(),
     latestDate: z.string().nullable(),
     currencies: z.array(z.string()),
@@ -45,11 +51,11 @@ export function registerDatabaseInfo(server: McpServer, context: ServerContext):
       const accounts = db.queryOne<{ n: number }>("SELECT COUNT(*) n FROM ACCOUNTLIST_V1");
       const live = db.queryOne<{ n: number; lo: string | null; hi: string | null }>(
         `SELECT COUNT(*) n, MIN(TRANSDATE) lo, MAX(TRANSDATE) hi FROM CHECKINGACCOUNT_V1
-         WHERE (DELETEDTIME = '' OR DELETEDTIME IS NULL) AND COALESCE(STATUS,'') NOT IN ('V','D')`,
+         WHERE ${liveRows("CHECKINGACCOUNT_V1")}`,
       );
       const excluded = db.queryOne<{ n: number }>(
         `SELECT COUNT(*) n FROM CHECKINGACCOUNT_V1
-         WHERE (DELETEDTIME IS NOT NULL AND DELETEDTIME <> '') OR COALESCE(STATUS,'') IN ('V','D')`,
+         WHERE NOT (${liveRows("CHECKINGACCOUNT_V1")})`,
       );
       const currencies = db.query<{ CURRENCY_SYMBOL: string }>(
         "SELECT CURRENCY_SYMBOL FROM CURRENCYFORMATS_V1 ORDER BY CURRENCYID",

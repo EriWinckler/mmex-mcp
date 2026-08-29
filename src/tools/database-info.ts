@@ -122,7 +122,16 @@ export function registerDatabaseInfo(server: McpServer, context: ServerContext):
       };
 
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(structuredContent, null, 2) }],
+        content: [
+          {
+            type: "text" as const,
+            text:
+              `${structuredContent.contents.accounts} accounts, ` +
+              `${structuredContent.contents.liveTransactions} transactions ` +
+              `(${structuredContent.contents.earliestDate ?? "?"} to ${structuredContent.contents.latestDate ?? "?"}), ` +
+              `base ${structuredContent.database.baseCurrency ?? "?"}, read-only: ${structuredContent.safety.readOnly}`,
+          },
+        ],
         structuredContent,
       };
     },

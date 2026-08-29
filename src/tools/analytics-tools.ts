@@ -96,31 +96,34 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
       });
       const currency = resolver.base?.symbol ?? "?";
       const totalUnits = Math.abs(result.totalBase.units) || 1;
-      return toolResult({
-        categories: result.categories.map((c) => ({
-          categoryId: c.categoryId,
-          name: maybeRedact(context, c.name, "category"),
-          amount: amount(c.amountBase, currency),
-          transactionCount: c.transactionCount,
-          shareOfTotal: Math.round((Math.abs(c.amountBase.units) / totalUnits) * 10000) / 10000,
-        })),
-        total: amount(result.totalBase, currency),
-        uncategorized: amount(result.uncategorizedBase, currency),
-        transfersExcluded: result.transfersExcluded,
-        assetTransfersExcluded: result.assetTransfersExcluded,
-        coverage: coverage({
-          groupsReturned: result.categories.length,
-          groupsTotal: result.groupsTotal,
-          otherGroups: result.otherGroups,
-          otherAmount: result.otherBase,
-          currency,
-        }),
-        basis: basis(db, resolver, result.basis, [
-          ...EXCLUDED_ALWAYS,
-          "transfers",
-          "asset and share movements",
-        ]),
-      });
+      return toolResult(
+        {
+          categories: result.categories.map((c) => ({
+            categoryId: c.categoryId,
+            name: maybeRedact(context, c.name, "category"),
+            amount: amount(c.amountBase, currency),
+            transactionCount: c.transactionCount,
+            shareOfTotal: Math.round((Math.abs(c.amountBase.units) / totalUnits) * 10000) / 10000,
+          })),
+          total: amount(result.totalBase, currency),
+          uncategorized: amount(result.uncategorizedBase, currency),
+          transfersExcluded: result.transfersExcluded,
+          assetTransfersExcluded: result.assetTransfersExcluded,
+          coverage: coverage({
+            groupsReturned: result.categories.length,
+            groupsTotal: result.groupsTotal,
+            otherGroups: result.otherGroups,
+            otherAmount: result.otherBase,
+            currency,
+          }),
+          basis: basis(db, resolver, result.basis, [
+            ...EXCLUDED_ALWAYS,
+            "transfers",
+            "asset and share movements",
+          ]),
+        },
+        `${result.categories.length} of ${result.groupsTotal} categories, total ${amount(result.totalBase, currency).text} ${currency}`,
+      );
     },
   );
 
@@ -152,8 +155,9 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
             transactionCount: z.number().int(),
           }),
         ),
-        netWorth: amountSchema,
+        netWorth: amountSchema.describe("Over every account returned."),
         asOf: z.string().nullable(),
+        page: pageSchema,
         basis: basisSchema,
       },
       annotations: READ_ONLY_TOOL,
@@ -164,22 +168,34 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
         includeClosed: args.includeClosed,
       });
       const base = resolver.base?.symbol ?? "?";
-      return toolResult({
-        accounts: result.accounts.map((a) => ({
-          accountId: a.accountId,
-          name: maybeRedact(context, a.name, "account"),
-          type: a.type,
-          status: a.status,
-          currency: a.currency,
-          balance: amount(a.balance, a.currency),
-          balanceInBaseCurrency: amount(a.balanceBase, base),
-          reconciledBalance: amount(a.reconciledBalance, a.currency),
-          transactionCount: a.transactionCount,
-        })),
-        netWorth: amount(result.netWorthBase, base),
-        asOf: result.asOf,
-        basis: basis(db, resolver, result.basis, EXCLUDED_ALWAYS),
-      });
+      return toolResult(
+        {
+          accounts: result.accounts.map((a) => ({
+            accountId: a.accountId,
+            name: maybeRedact(context, a.name, "account"),
+            type: a.type,
+            status: a.status,
+            currency: a.currency,
+            balance: amount(a.balance, a.currency),
+            balanceInBaseCurrency: amount(a.balanceBase, base),
+            reconciledBalance: amount(a.reconciledBalance, a.currency),
+            transactionCount: a.transactionCount,
+          })),
+          netWorth: amount(result.netWorthBase, base),
+          asOf: result.asOf,
+          // Accounts are created by hand, so this array is small in practice.
+          // It carries an envelope anyway: "few of these exist" is a claim
+          // about the user's data, and the server does not control that.
+          page: page({
+            returned: result.accounts.length,
+            limit: result.accounts.length,
+            offset: 0,
+            totalMatching: result.accounts.length,
+          }),
+          basis: basis(db, resolver, result.basis, EXCLUDED_ALWAYS),
+        },
+        `${result.accounts.length} accounts, net worth ${amount(result.netWorthBase, base).text} ${base}`,
+      );
     },
   );
 
@@ -208,7 +224,14 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
             transactionCount: z.number().int(),
           }),
         ),
-        totals: z.object({ income: amountSchema, expense: amountSchema, net: amountSchema }),
+        totals: z
+          .object({ income: amountSchema, expense: amountSchema, net: amountSchema })
+          .describe("Over EVERY period in range, including any folded into coverage.other."),
+        coverage: coverageSchema,
+        defaultedRange: z
+          .object({ from: z.string(), to: z.string() })
+          .nullable()
+          .describe("Set when no range was given and a default window was applied. Tell the user."),
         transfersExcluded: z.number().int(),
         basis: basisSchema,
       },
@@ -222,22 +245,38 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
         groupBy: args.groupBy,
       });
       const currency = resolver.base?.symbol ?? "?";
-      return toolResult({
-        periods: result.periods.map((p) => ({
-          period: p.period,
-          income: amount(p.incomeBase, currency),
-          expense: amount(p.expenseBase, currency),
-          net: amount(p.netBase, currency),
-          transactionCount: p.transactionCount,
-        })),
-        totals: {
-          income: amount(result.incomeBase, currency),
-          expense: amount(result.expenseBase, currency),
-          net: amount(result.netBase, currency),
+      return toolResult(
+        {
+          periods: result.periods.map((p) => ({
+            period: p.period,
+            income: amount(p.incomeBase, currency),
+            expense: amount(p.expenseBase, currency),
+            net: amount(p.netBase, currency),
+            transactionCount: p.transactionCount,
+          })),
+          totals: {
+            income: amount(result.incomeBase, currency),
+            expense: amount(result.expenseBase, currency),
+            net: amount(result.netBase, currency),
+          },
+          coverage: coverage({
+            groupsReturned: result.periods.length,
+            groupsTotal: result.periodsTotal,
+            otherGroups: result.otherPeriods,
+            otherAmount: {
+              units: result.otherIncomeBase.units - result.otherExpenseBase.units,
+              places: result.otherIncomeBase.places,
+            },
+            currency,
+          }),
+          defaultedRange: result.defaultedRange,
+          transfersExcluded: result.transfersExcluded,
+          basis: basis(db, resolver, result.basis, [...EXCLUDED_ALWAYS, "transfers"]),
         },
-        transfersExcluded: result.transfersExcluded,
-        basis: basis(db, resolver, result.basis, [...EXCLUDED_ALWAYS, "transfers"]),
-      });
+        result.defaultedRange === null
+          ? `${result.periods.length} periods: income ${amount(result.incomeBase, currency).text}, expense ${amount(result.expenseBase, currency).text}, net ${amount(result.netBase, currency).text}`
+          : `${result.periods.length} periods (defaulted to ${result.defaultedRange.from}..${result.defaultedRange.to}): income ${amount(result.incomeBase, currency).text}, expense ${amount(result.expenseBase, currency).text}, net ${amount(result.netBase, currency).text}`,
+      );
     },
   );
 
@@ -306,23 +345,26 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
         offset,
       });
       const base = resolver.base?.symbol ?? "?";
-      return toolResult({
-        transactions: result.rows.map((r) => ({
-          transactionId: r.transactionId,
-          date: r.date,
-          account: maybeRedact(context, r.account, "account"),
-          payee: maybeRedact(context, r.payee, "payee"),
-          category: r.hasSplits ? "(split)" : maybeRedact(context, r.category, "category"),
-          type: r.type,
-          status: r.status,
-          amount: amount(r.amount, r.currency),
-          amountInBaseCurrency: amount(r.amountBase, base),
-          hasSplits: r.hasSplits,
-          notes: context.redact ? "" : r.notes,
-        })),
-        page: page({ returned: result.rows.length, limit, offset, totalMatching: result.totalMatching }),
-        basis: basis(db, resolver, result.basis, EXCLUDED_ALWAYS),
-      });
+      return toolResult(
+        {
+          transactions: result.rows.map((r) => ({
+            transactionId: r.transactionId,
+            date: r.date,
+            account: maybeRedact(context, r.account, "account"),
+            payee: maybeRedact(context, r.payee, "payee"),
+            category: r.hasSplits ? "(split)" : maybeRedact(context, r.category, "category"),
+            type: r.type,
+            status: r.status,
+            amount: amount(r.amount, r.currency),
+            amountInBaseCurrency: amount(r.amountBase, base),
+            hasSplits: r.hasSplits,
+            notes: context.redact ? "" : r.notes,
+          })),
+          page: page({ returned: result.rows.length, limit, offset, totalMatching: result.totalMatching }),
+          basis: basis(db, resolver, result.basis, EXCLUDED_ALWAYS),
+        },
+        `${result.rows.length} of ${result.totalMatching} matching transactions`,
+      );
     },
   );
 
@@ -367,24 +409,27 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
         .filter((c) => (needle === undefined ? true : c.fullName.toLowerCase().includes(needle)))
         .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
-      return toolResult({
-        categories: matching.slice(0, limit).map((c) => ({
-          categoryId: c.id,
-          name: maybeRedact(context, c.name, "category"),
-          fullName: maybeRedact(context, c.fullName, "category"),
-          parentId: c.parentId,
-          depth: c.depth,
-          active: c.active,
-        })),
-        delimiter: tree.delimiter,
-        unresolved: [...tree.orphaned],
-        page: page({
-          returned: Math.min(matching.length, limit),
-          limit,
-          offset: 0,
-          totalMatching: matching.length,
-        }),
-      });
+      return toolResult(
+        {
+          categories: matching.slice(0, limit).map((c) => ({
+            categoryId: c.id,
+            name: maybeRedact(context, c.name, "category"),
+            fullName: maybeRedact(context, c.fullName, "category"),
+            parentId: c.parentId,
+            depth: c.depth,
+            active: c.active,
+          })),
+          delimiter: tree.delimiter,
+          unresolved: [...tree.orphaned],
+          page: page({
+            returned: Math.min(matching.length, limit),
+            limit,
+            offset: 0,
+            totalMatching: matching.length,
+          }),
+        },
+        `${Math.min(matching.length, limit)} of ${matching.length} categories`,
+      );
     },
   );
 }

@@ -149,3 +149,81 @@ describe("mmex_database_info", () => {
     db.close();
   });
 });
+
+/**
+ * Contract enforcement across the whole tool registry.
+ *
+ * These exist because income_vs_expense shipped an unbounded array and nothing
+ * caught it: annotations and outputSchema were asserted, but the envelope that
+ * makes a result honest was not. A test that walks every registered tool is the
+ * only thing that stops tool number seven repeating it.
+ */
+describe("every tool obeys the result contract", () => {
+  type JsonSchema = {
+    properties?: Record<string, { type?: string; items?: unknown; properties?: Record<string, unknown> }>;
+  };
+
+  async function schemas(): Promise<{ name: string; schema: JsonSchema }[]> {
+    const { client, db } = await connect();
+    const { tools } = await client.listTools();
+    await client.close();
+    db.close();
+    return tools.map((t) => ({ name: t.name, schema: (t.outputSchema ?? {}) as JsonSchema }));
+  }
+
+  it("puts every array behind a page or coverage envelope", async () => {
+    for (const { name, schema } of await schemas()) {
+      const props = schema.properties ?? {};
+      const arrays = Object.entries(props).filter(([, v]) => v.type === "array");
+      if (arrays.length === 0) continue;
+      const enveloped = "page" in props || "coverage" in props;
+      expect(enveloped, `${name} returns ${arrays.map(([k]) => k).join(", ")} with no page/coverage`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("declares a basis on every tool that reports figures", async () => {
+    for (const { name, schema } of await schemas()) {
+      if (name === "mmex_database_info" || name === "mmex_categories") continue;
+      expect(Object.keys(schema.properties ?? {}), `${name} has no basis`).toContain("basis");
+    }
+  });
+
+  it("never sends money as a bare number", async () => {
+    // A plain float would undo the whole minor-units design at the last step.
+    const moneyish = /amount|total|balance|income|expense|net|worth/i;
+    for (const { name, schema } of await schemas()) {
+      for (const [key, value] of Object.entries(schema.properties ?? {})) {
+        if (!moneyish.test(key)) continue;
+        expect(value.type, `${name}.${key} is a bare ${value.type}`).not.toBe("number");
+      }
+    }
+  });
+
+  it("returns a short text summary, not the payload restringified", async () => {
+    const { client, db } = await connect();
+    const calls: [string, Record<string, unknown>][] = [
+      ["mmex_database_info", {}],
+      ["mmex_spending_by_category", {}],
+      ["mmex_account_balances", {}],
+      ["mmex_income_vs_expense", {}],
+      ["mmex_transactions", { limit: 5 }],
+      ["mmex_categories", {}],
+    ];
+    for (const [name, args] of calls) {
+      const result = await client.callTool({ name, arguments: args });
+      const text = (result.content as { type: string; text: string }[])[0]?.text ?? "";
+      const structured = JSON.stringify(result.structuredContent);
+      expect(text.length, `${name} summary is empty`).toBeGreaterThan(0);
+      // Restringifying the payload roughly doubled every response for no
+      // added information.
+      expect(text.length, `${name} text block is as large as the payload`).toBeLessThan(
+        structured.length / 2,
+      );
+      expect(text, `${name} summary should not be raw JSON`).not.toMatch(/^\s*[{[]/);
+    }
+    await client.close();
+    db.close();
+  });
+});

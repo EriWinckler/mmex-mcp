@@ -5,14 +5,14 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { openReadOnly } from "../src/db/connection.js";
 import { MMEX_SCHEMA_DDL } from "../src/fixture/schema.js";
-import { CategoryTree } from "../src/semantics/categories.js";
-import { CurrencyResolver } from "../src/semantics/currency.js";
 import {
   accountBalances,
   incomeVsExpense,
   searchTransactions,
   spendingByCategory,
 } from "../src/semantics/analytics.js";
+import { CategoryTree } from "../src/semantics/categories.js";
+import { CurrencyResolver } from "../src/semantics/currency.js";
 
 function build(seed: string) {
   const dir = mkdtempSync(join(tmpdir(), "mmex-rev-"));
@@ -27,10 +27,10 @@ function build(seed: string) {
 
 const BASE = `
 INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
-INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, SCALE, BASECONVRATE)
-  VALUES (1,'US Dollar','USD',100,1.0);
-INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, STATUS, CURRENCYID, INITIALBAL)
-  VALUES (1,'Checking','Checking','Open',1,100.00);
+INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
+  VALUES (1,'US Dollar','USD','Fiat',100,1.0);
+INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, STATUS, FAVORITEACCT, CURRENCYID, INITIALBAL)
+  VALUES (1,'Checking','Checking','Open','FALSE',1,100.00);
 INSERT INTO CATEGORY_V1 (CATEGID, CATEGNAME, PARENTID, ACTIVE) VALUES (1,'Food',-1,1),(2,'Coffee',1,1);
 `;
 
@@ -71,40 +71,49 @@ describe("scratch: doc-vs-code", () => {
   it("SCALE=0: every amount collapses to zero", () => {
     const { h, resolver, tree } = build(`
       INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
-      INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, SCALE, BASECONVRATE)
-        VALUES (1,'Odd','ODD',0,1.0);
-      INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,CURRENCYID,INITIALBAL)
-        VALUES (1,'Checking','Checking','Open',1,100.00);
+      INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
+        VALUES (1,'Odd','ODD','Fiat',0,1.0);
+      INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,FAVORITEACCT,CURRENCYID,INITIALBAL)
+        VALUES (1,'Checking','Checking','Open','FALSE',1,100.00);
       INSERT INTO CATEGORY_V1 (CATEGID,CATEGNAME,PARENTID,ACTIVE) VALUES (1,'Food',-1,1);
       INSERT INTO CHECKINGACCOUNT_V1 (TRANSID,ACCOUNTID,TOACCOUNTID,PAYEEID,TRANSCODE,TRANSAMOUNT,STATUS,TRANSDATE,CATEGID,DELETEDTIME)
       VALUES (1,1,NULL,1,'Withdrawal',40.00,'','2026-01-05',1,'');`);
     const r = spendingByCategory(h, resolver, tree, {});
     console.log("SCALE=0 spending total:", JSON.stringify(r.totalBase), "cats:", r.categories.length);
     const b = accountBalances(h, resolver, {});
-    console.log("SCALE=0 balance:", JSON.stringify(b.accounts[0]?.balance), "netWorth:", JSON.stringify(b.netWorthBase));
+    console.log(
+      "SCALE=0 balance:",
+      JSON.stringify(b.accounts[0]?.balance),
+      "netWorth:",
+      JSON.stringify(b.netWorthBase),
+    );
   });
 
   it("SCALE=3 (not a power of ten): SQL and places disagree", () => {
     const { h, resolver, tree } = build(`
       INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
-      INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, SCALE, BASECONVRATE)
-        VALUES (1,'Odd','ODD',3,1.0);
-      INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,CURRENCYID,INITIALBAL)
-        VALUES (1,'Checking','Checking','Open',1,0.00);
+      INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
+        VALUES (1,'Odd','ODD','Fiat',3,1.0);
+      INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,FAVORITEACCT,CURRENCYID,INITIALBAL)
+        VALUES (1,'Checking','Checking','Open','FALSE',1,0.00);
       INSERT INTO CATEGORY_V1 (CATEGID,CATEGNAME,PARENTID,ACTIVE) VALUES (1,'Food',-1,1);
       INSERT INTO CHECKINGACCOUNT_V1 (TRANSID,ACCOUNTID,TOACCOUNTID,PAYEEID,TRANSCODE,TRANSAMOUNT,STATUS,TRANSDATE,CATEGID,DELETEDTIME)
       VALUES (1,1,NULL,1,'Withdrawal',100.00,'','2026-01-05',1,'');`);
     const r = spendingByCategory(h, resolver, tree, {});
-    console.log("SCALE=3 spending total:", JSON.stringify(r.totalBase), "(expect 100.00 -> units 10000 at 2 places)");
+    console.log(
+      "SCALE=3 spending total:",
+      JSON.stringify(r.totalBase),
+      "(expect 100.00 -> units 10000 at 2 places)",
+    );
   });
 
   it("negative SCALE flips signs", () => {
     const { h, resolver, tree } = build(`
       INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
-      INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, SCALE, BASECONVRATE)
-        VALUES (1,'Odd','ODD',-100,1.0);
-      INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,CURRENCYID,INITIALBAL)
-        VALUES (1,'Checking','Checking','Open',1,0.00);
+      INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
+        VALUES (1,'Odd','ODD','Fiat',-100,1.0);
+      INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,FAVORITEACCT,CURRENCYID,INITIALBAL)
+        VALUES (1,'Checking','Checking','Open','FALSE',1,0.00);
       INSERT INTO CATEGORY_V1 (CATEGID,CATEGNAME,PARENTID,ACTIVE) VALUES (1,'Food',-1,1);
       INSERT INTO CHECKINGACCOUNT_V1 (TRANSID,ACCOUNTID,TOACCOUNTID,PAYEEID,TRANSCODE,TRANSAMOUNT,STATUS,TRANSDATE,CATEGID,DELETEDTIME)
       VALUES (1,1,NULL,1,'Withdrawal',100.00,'','2026-01-05',1,'');`);

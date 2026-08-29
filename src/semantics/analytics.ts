@@ -395,15 +395,30 @@ export interface PeriodTotals {
 }
 
 export interface IncomeVsExpenseResult {
+  /** Most recent periods first-to-last, capped. Older ones fold into `other`. */
   readonly periods: readonly PeriodTotals[];
+  /** Over EVERY period in range, including any folded away. */
   readonly incomeBase: Minor;
   readonly expenseBase: Minor;
   readonly netBase: Minor;
+  /** The periods that did not fit under the cap, as one figure. */
+  readonly otherIncomeBase: Minor;
+  readonly otherExpenseBase: Minor;
+  readonly otherPeriods: number;
+  readonly periodsTotal: number;
   readonly transfersExcluded: number;
+  /** Set when no range was given and a default window was applied. */
+  readonly defaultedRange: { readonly from: string; readonly to: string } | null;
   readonly basis: RateBasis;
 }
 
 export type Grouping = "month" | "quarter" | "year";
+
+function addMonthsIso(iso: string, months: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
 
 function periodExpression(grouping: Grouping, alias = "t"): string {
   const d = transactionDate(alias);
@@ -425,13 +440,42 @@ function periodExpression(grouping: Grouping, alias = "t"): string {
  * ExpenseAndRevenueByMonth report gets wrong: it applies no currency conversion
  * and does not filter deleted rows at all.
  */
+/** Periods returned before the tail is folded away. Generous for a trend. */
+const MAX_PERIODS = 60;
+
+/** Window applied when the caller gives neither end of the range. */
+const DEFAULT_WINDOW_MONTHS = 24;
+
 export function incomeVsExpense(
   db: MmexDatabase,
   resolver: CurrencyResolver,
-  options: DateRange & { readonly groupBy?: Grouping; readonly accountIds?: readonly number[] } = {},
+  options: DateRange & {
+    readonly groupBy?: Grouping;
+    readonly accountIds?: readonly number[];
+    readonly maxPeriods?: number;
+  } = {},
 ): IncomeVsExpenseResult {
   const grouping = options.groupBy ?? "month";
-  const { sql: range, params } = rangeClause(options);
+
+  // Period count is bounded only by how long someone has used Money Manager EX,
+  // which the server does not control, and a monthly grouping over all history
+  // is the default call. MMEX dates to 2005, so a fifteen year database is the
+  // core case rather than an edge one. Without a window, that single call is
+  // the largest response this server can produce.
+  let effective: DateRange = options;
+  let defaultedRange: { from: string; to: string } | null = null;
+  if (options.from === undefined && options.to === undefined) {
+    const latest = db.queryOne<{ hi: string | null }>(
+      `SELECT MAX(${transactionDate("t")}) hi FROM CHECKINGACCOUNT_V1 t WHERE ${liveRows("t")}`,
+    );
+    if (latest?.hi) {
+      const from = addMonthsIso(latest.hi, -DEFAULT_WINDOW_MONTHS);
+      defaultedRange = { from, to: latest.hi };
+      effective = { from, to: latest.hi };
+    }
+  }
+
+  const { sql: range, params } = rangeClause(effective);
   const accountFilter =
     options.accountIds !== undefined && options.accountIds.length > 0
       ? ` AND t.ACCOUNTID IN (${options.accountIds.map((id) => Number(id)).join(",")})`
@@ -483,16 +527,11 @@ export function incomeVsExpense(
     byPeriod.set(row.period, bucket);
   }
 
-  const periods: PeriodTotals[] = [];
-  const allIncome: Minor[] = [];
-  const allExpense: Minor[] = [];
-
+  const computed: PeriodTotals[] = [];
   for (const [period, bucket] of [...byPeriod.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     const incomeBase = convertAndSum(bucket.income, resolver, basis);
     const expenseBase = convertAndSum(bucket.expense, resolver, basis);
-    allIncome.push(incomeBase);
-    allExpense.push(expenseBase);
-    periods.push({
+    computed.push({
       period,
       incomeBase,
       expenseBase,
@@ -501,15 +540,37 @@ export function incomeVsExpense(
     });
   }
 
-  const totalIncome = sumMinor(allIncome, basePlaces);
-  const totalExpense = sumMinor(allExpense, basePlaces);
+  // Keep the most recent periods: a trend question is about the recent end.
+  const cap = Math.max(1, Math.min(options.maxPeriods ?? MAX_PERIODS, MAX_PERIODS));
+  const folded = computed.length > cap ? computed.slice(0, computed.length - cap) : [];
+  const shown = computed.slice(folded.length);
+
+  const totalIncome = sumMinor(
+    computed.map((p) => p.incomeBase),
+    basePlaces,
+  );
+  const totalExpense = sumMinor(
+    computed.map((p) => p.expenseBase),
+    basePlaces,
+  );
 
   return {
-    periods,
+    periods: shown,
     incomeBase: totalIncome,
     expenseBase: totalExpense,
     netBase: { units: totalIncome.units - totalExpense.units, places: basePlaces },
+    otherIncomeBase: sumMinor(
+      folded.map((p) => p.incomeBase),
+      basePlaces,
+    ),
+    otherExpenseBase: sumMinor(
+      folded.map((p) => p.expenseBase),
+      basePlaces,
+    ),
+    otherPeriods: folded.length,
+    periodsTotal: computed.length,
     transfersExcluded: excluded?.n ?? 0,
+    defaultedRange,
     basis,
   };
 }

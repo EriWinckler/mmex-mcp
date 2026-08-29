@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mmex": {
+      "command": "npx",
+      "args": ["-y", "mmex-mcp"],
+      "env": {
+        "MMEX_MCP_DB": "${MMEX_MCP_DB:-./mmex-demo.mmb}"
+      }
+    }
+  }
+}

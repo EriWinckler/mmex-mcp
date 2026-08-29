@@ -1,0 +1,19 @@
+{
+  "database": {
+    "path": "~/finances.mmb",
+    "snapshot": false,
+    "redact": false
+  },
+  "llm": {
+    "provider": "claude-code",
+    "model": "haiku",
+    "claudeCode": {
+      "binary": "claude",
+      "timeoutMs": 180000
+    },
+    "anthropic": {
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "maxTokens": 2048
+    }
+  }
+}

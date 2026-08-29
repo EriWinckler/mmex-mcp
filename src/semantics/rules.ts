@@ -12,6 +12,25 @@
  * See docs/CONFORMANCE.md for every divergence with citations.
  */
 
+/**
+ * TRANSCODE and STATUS, normalized for comparison.
+ *
+ * MMEX matches both case-insensitively: `find_key_n` compares with CmpNoCase
+ * (src/base/mmChoice.cpp:127), so 'Deposit', 'deposit' and 'DEPOSIT' are all
+ * the same code to the application. The desktop app writes the capitalized
+ * form, but importers, the Android app and the web companion do not
+ * necessarily, and an exact comparison silently misclassifies those rows: a
+ * lowercase deposit becomes an expense, and a lowercase transfer is not
+ * excluded from spending at all.
+ */
+export function transCode(alias = "t"): string {
+  return `UPPER(IFNULL(${alias}.TRANSCODE, ''))`;
+}
+
+export function statusCode(alias = "t"): string {
+  return `UPPER(IFNULL(${alias}.STATUS, ''))`;
+}
+
 /** The five STATUS values MMEX recognizes. Unreconciled is '' and never NULL. */
 export const TRANSACTION_STATUS = {
   unreconciled: "",
@@ -39,12 +58,12 @@ export const TRANSACTION_STATUS = {
  * NULL, not true, so a bare `STATUS <> 'V'` silently drops NULL-status rows.
  */
 export function liveRows(alias = "t"): string {
-  return `IFNULL(${alias}.DELETEDTIME, '') = '' AND IFNULL(${alias}.STATUS, '') <> 'V'`;
+  return `IFNULL(${alias}.DELETEDTIME, '') = '' AND ${statusCode(alias)} <> 'V'`;
 }
 
 /** Only reconciled rows, for a reconciled balance. */
 export function reconciledRows(alias = "t"): string {
-  return `${liveRows(alias)} AND IFNULL(${alias}.STATUS, '') = 'R'`;
+  return `${liveRows(alias)} AND ${statusCode(alias)} = 'R'`;
 }
 
 /**
@@ -81,11 +100,12 @@ export function transactionDate(alias = "t"): string {
  * -TRANSAMOUNT because the FROM branch is tested first.
  */
 export function accountFlow(alias: string, accountIdSql: string): string {
+  const code = transCode(alias);
   return `CASE
-    WHEN ${alias}.TRANSCODE = 'Deposit'  AND ${alias}.ACCOUNTID = ${accountIdSql} THEN ${alias}.TRANSAMOUNT
-    WHEN ${alias}.TRANSCODE = 'Transfer' AND ${alias}.ACCOUNTID = ${alias}.TOACCOUNTID THEN 0
-    WHEN ${alias}.TRANSCODE = 'Transfer' AND ${alias}.TOACCOUNTID = ${accountIdSql} THEN ${alias}.TOTRANSAMOUNT
-    WHEN ${alias}.TRANSCODE = 'Transfer' AND ${alias}.ACCOUNTID = ${accountIdSql} THEN -${alias}.TRANSAMOUNT
+    WHEN ${code} = 'DEPOSIT'  AND ${alias}.ACCOUNTID = ${accountIdSql} THEN ${alias}.TRANSAMOUNT
+    WHEN ${code} = 'TRANSFER' AND ${alias}.ACCOUNTID = ${alias}.TOACCOUNTID THEN 0
+    WHEN ${code} = 'TRANSFER' AND ${alias}.TOACCOUNTID = ${accountIdSql} THEN ${alias}.TOTRANSAMOUNT
+    WHEN ${code} = 'TRANSFER' AND ${alias}.ACCOUNTID = ${accountIdSql} THEN -${alias}.TRANSAMOUNT
     WHEN ${alias}.ACCOUNTID = ${accountIdSql} THEN -${alias}.TRANSAMOUNT
     ELSE 0 END`;
 }
@@ -110,7 +130,7 @@ export function isForeignAsTransfer(alias = "t"): string {
   // There is deliberately no `TOACCOUNTID > 0` guard: the sentinel is negative,
   // so that condition made the sentinel branch unreachable.
   return `IFNULL(
-    ${alias}.TRANSCODE <> 'Transfer'
+    ${transCode(alias)} <> 'TRANSFER'
     AND ${alias}.TOACCOUNTID IS NOT NULL
     AND ${alias}.TOACCOUNTID <> -1
     AND (${alias}.TOACCOUNTID = ${AS_TRANSFER_SENTINEL} OR ${alias}.TOACCOUNTID = ${alias}.ACCOUNTID)

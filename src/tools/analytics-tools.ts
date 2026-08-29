@@ -55,7 +55,11 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
           .describe(
             "'leaf' reports categories as recorded; 'root' rolls subcategories into their top level.",
           ),
-        accountIds: z.array(z.number().int()).optional().describe("Restrict to these accounts."),
+        accountIds: z
+          .array(z.number().int())
+          .nonempty()
+          .optional()
+          .describe("Restrict to these accounts. Omit for all accounts; an empty array is rejected."),
         limit: z.number().int().optional().describe("Maximum categories to return. Default 25, max 200."),
       },
       outputSchema: {
@@ -192,7 +196,7 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
         from: isoDate.optional(),
         to: isoDate.optional(),
         groupBy: z.enum(["month", "quarter", "year"]).default("month"),
-        accountIds: z.array(z.number().int()).optional(),
+        accountIds: z.array(z.number().int()).nonempty().optional(),
       },
       outputSchema: {
         periods: z.array(
@@ -250,7 +254,7 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
       inputSchema: {
         from: isoDate.optional(),
         to: isoDate.optional(),
-        accountIds: z.array(z.number().int()).optional(),
+        accountIds: z.array(z.number().int()).nonempty().optional(),
         categoryId: z
           .number()
           .int()

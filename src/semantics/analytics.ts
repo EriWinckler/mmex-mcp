@@ -2,7 +2,7 @@ import type { MmexDatabase } from "../db/connection.js";
 import { convertMinor, type Minor, sumMinor } from "../money/money.js";
 import type { CategoryTree } from "./categories.js";
 import type { CurrencyResolver } from "./currency.js";
-import { accountFlow, isForeignAsTransfer, liveRows, transactionDate } from "./rules.js";
+import { accountFlow, isForeignAsTransfer, liveRows, transactionDate, transCode } from "./rules.js";
 
 /**
  * Analytics over an MMEX database.
@@ -34,7 +34,16 @@ export interface DateRange {
   readonly to?: string;
 }
 
+export class AnalyticsError extends Error {
+  override readonly name = "AnalyticsError";
+}
+
 function rangeClause(range: DateRange, alias = "t"): { sql: string; params: Record<string, string> } {
+  if (range.from !== undefined && range.to !== undefined && range.from > range.to) {
+    // Silently returning nothing would look like "you spent nothing", which is
+    // a wrong answer rather than a refused one.
+    throw new AnalyticsError(`Date range is backwards: from ${range.from} is later than to ${range.to}`);
+  }
   const parts: string[] = [];
   const params: Record<string, string> = {};
   if (range.from !== undefined) {
@@ -269,11 +278,11 @@ export function spendingByCategory(
       : "";
 
   // Anything not a Deposit is a Withdrawal, matching MMEX's parser default.
-  const sign = "CASE WHEN t.TRANSCODE = 'Deposit' THEN 1 ELSE -1 END";
+  const sign = `CASE WHEN ${transCode("t")} = 'DEPOSIT' THEN 1 ELSE -1 END`;
   const scale = "IFNULL(cf.SCALE, 100)";
   const common =
     `${liveRows("t")}` +
-    ` AND t.TRANSCODE <> 'Transfer'` +
+    ` AND ${transCode("t")} <> 'TRANSFER'` +
     ` AND NOT (${isForeignAsTransfer("t")})` +
     `${accountFilter}${range}`;
 
@@ -308,7 +317,7 @@ export function spendingByCategory(
   );
 
   const excluded = db.queryOne<{ transfers: number; assets: number }>(
-    `SELECT SUM(CASE WHEN t.TRANSCODE = 'Transfer' THEN 1 ELSE 0 END) AS transfers,
+    `SELECT SUM(CASE WHEN ${transCode("t")} = 'TRANSFER' THEN 1 ELSE 0 END) AS transfers,
             SUM(CASE WHEN ${isForeignAsTransfer("t")} THEN 1 ELSE 0 END) AS assets
        FROM CHECKINGACCOUNT_V1 t
       WHERE ${liveRows("t")}${accountFilter}${range}`,
@@ -439,16 +448,16 @@ export function incomeVsExpense(
   }>(
     `SELECT ${periodExpression(grouping)} AS period, a.CURRENCYID AS curId,
             ${transactionDate("t")} AS day,
-            SUM(CASE WHEN t.TRANSCODE = 'Deposit'
+            SUM(CASE WHEN ${transCode("t")} = 'DEPOSIT'
                      THEN CAST(ROUND(t.TRANSAMOUNT * ${scale}) AS INTEGER) ELSE 0 END) AS incomeUnits,
-            SUM(CASE WHEN t.TRANSCODE <> 'Deposit'
+            SUM(CASE WHEN ${transCode("t")} <> 'DEPOSIT'
                      THEN CAST(ROUND(t.TRANSAMOUNT * ${scale}) AS INTEGER) ELSE 0 END) AS expenseUnits,
             COUNT(*) AS n
        FROM CHECKINGACCOUNT_V1 t
        JOIN ACCOUNTLIST_V1 a ON a.ACCOUNTID = t.ACCOUNTID
        LEFT JOIN CURRENCYFORMATS_V1 cf ON cf.CURRENCYID = a.CURRENCYID
       WHERE ${liveRows("t")}
-        AND t.TRANSCODE <> 'Transfer'
+        AND ${transCode("t")} <> 'TRANSFER'
         AND NOT (${isForeignAsTransfer("t")})${accountFilter}${range}
       GROUP BY 1, 2, 3
       ORDER BY 1`,
@@ -457,7 +466,7 @@ export function incomeVsExpense(
 
   const excluded = db.queryOne<{ n: number }>(
     `SELECT COUNT(*) n FROM CHECKINGACCOUNT_V1 t
-      WHERE ${liveRows("t")} AND t.TRANSCODE = 'Transfer'${accountFilter}${range}`,
+      WHERE ${liveRows("t")} AND ${transCode("t")} = 'TRANSFER'${accountFilter}${range}`,
     params,
   );
 
@@ -575,7 +584,7 @@ export function searchTransactions(
     clauses.push(`(t.ACCOUNTID IN (${ids}) OR t.TOACCOUNTID IN (${ids}))`);
   }
   if (options.includeTransfers !== true) {
-    clauses.push("t.TRANSCODE <> 'Transfer'");
+    clauses.push(`${transCode("t")} <> 'TRANSFER'`);
   }
   if (options.payeeContains !== undefined && options.payeeContains !== "") {
     clauses.push("p.PAYEENAME LIKE @payee ESCAPE '\\'");

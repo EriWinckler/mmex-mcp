@@ -345,3 +345,67 @@ describe("a corrupt currency row cannot poison the rest", () => {
     db2.close();
   });
 });
+
+describe("transaction codes are matched case-insensitively, as MMEX does", () => {
+  function codeDb(code: string): MmexDatabase {
+    const d = mkdtempSync(join(tmpdir(), "mmex-code-"));
+    const path = join(d, "c.mmb");
+    const w = new Database(path);
+    for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
+    w.exec(
+      "INSERT INTO INFOTABLE_V1 (INFONAME,INFOVALUE) VALUES ('BaseCurrencyID','1');" +
+        "INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID,CURRENCYNAME,PFX_SYMBOL,SFX_SYMBOL,DECIMAL_POINT,GROUP_SEPARATOR,UNIT_NAME,CENT_NAME,SCALE,BASECONVRATE,CURRENCY_SYMBOL,CURRENCY_TYPE) VALUES (1,'USD','$','','.',',','','',100,1.0,'USD','Base');" +
+        "INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,INITIALBAL,INITIALDATE,FAVORITEACCT,CURRENCYID) VALUES (1,'A','Checking','Open',0,'2026-01-01','TRUE',1),(2,'B','Checking','Open',0,'2026-01-01','TRUE',1);" +
+        `INSERT INTO CHECKINGACCOUNT_V1 (TRANSID,ACCOUNTID,TOACCOUNTID,PAYEEID,TRANSCODE,TRANSAMOUNT,STATUS,CATEGID,TRANSDATE,DELETEDTIME,TOTRANSAMOUNT) VALUES (1,1,2,1,'${code}',100.00,'',-1,'2026-01-05','',100.00);`,
+    );
+    w.close();
+    return openReadOnly(path);
+  }
+
+  it.each(["Deposit", "deposit", "DEPOSIT"])("treats %s as a deposit", (code) => {
+    // MMEX's find_key_n compares with CmpNoCase, so all three are one code to
+    // the application. An exact match turned a lowercase deposit into an
+    // expense, inverting the sign of every such row.
+    const h = codeDb(code);
+    const flow = h.queryOne<{ f: number }>(
+      `SELECT ${accountFlow("t", "1")} f FROM CHECKINGACCOUNT_V1 t WHERE TRANSID = 1`,
+    );
+    h.close();
+    expect(flow?.f).toBe(100);
+  });
+
+  it.each(["Transfer", "transfer", "TRANSFER"])("treats %s as a transfer on both sides", (code) => {
+    // Worse than the deposit case: a lowercase transfer was not excluded from
+    // spending at all, so moving money to savings looked like an expense.
+    const h = codeDb(code);
+    const from = h.queryOne<{ f: number }>(
+      `SELECT ${accountFlow("t", "1")} f FROM CHECKINGACCOUNT_V1 t WHERE TRANSID = 1`,
+    );
+    const to = h.queryOne<{ f: number }>(
+      `SELECT ${accountFlow("t", "2")} f FROM CHECKINGACCOUNT_V1 t WHERE TRANSID = 1`,
+    );
+    h.close();
+    expect(from?.f).toBe(-100);
+    expect(to?.f).toBe(100);
+  });
+
+  it("treats a lowercase status v as void", () => {
+    const d = mkdtempSync(join(tmpdir(), "mmex-st-"));
+    const path = join(d, "s.mmb");
+    const w = new Database(path);
+    for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
+    w.exec(
+      "INSERT INTO CHECKINGACCOUNT_V1 (TRANSID,ACCOUNTID,TOACCOUNTID,PAYEEID,TRANSCODE,TRANSAMOUNT,STATUS,CATEGID,TRANSDATE,DELETEDTIME,TOTRANSAMOUNT)" +
+        " VALUES (1,1,NULL,1,'Withdrawal',10.00,'v',1,'2026-01-01','',0),(2,1,NULL,1,'Withdrawal',20.00,'',1,'2026-01-02','',0);",
+    );
+    w.close();
+    const h = openReadOnly(path);
+    const kept = h.queryOne<{ n: number; s: number }>(
+      `SELECT COUNT(*) n, SUM(TRANSAMOUNT) s FROM CHECKINGACCOUNT_V1 t WHERE ${liveRows()}`,
+    );
+    h.close();
+    rmSync(d, { recursive: true, force: true });
+    expect(kept?.n).toBe(1);
+    expect(kept?.s).toBe(20);
+  });
+});

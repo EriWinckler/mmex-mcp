@@ -71,13 +71,23 @@ async function main(): Promise<void> {
 
   const { server } = buildServer({ db, redact: config.database.redact });
 
+  // The snapshot copy is a full, readable copy of the user's finances, so it
+  // must be removed on every way out, not only on the signals we thought of.
+  // An MCP stdio client normally detaches by closing stdin, which raises none
+  // of them, so handling only SIGINT/SIGTERM leaked one copy per session.
+  // db.close() is idempotent and rmSync is synchronous, so it is safe here.
+  process.on("exit", () => db.close());
+
   const shutdown = (): void => {
     log.info("shutting down");
     db.close();
     process.exit(0);
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    process.on(signal, shutdown);
+  }
+  // stdin closing is how a client detaches; without this the process lingers.
+  process.stdin.on("close", shutdown);
 
   // stdout is the MCP transport. Nothing may write to it but the protocol.
   await server.connect(new StdioServerTransport());

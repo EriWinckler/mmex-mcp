@@ -35,19 +35,28 @@ export class MoneyError extends Error {
  *
  * MMEX stores SCALE as the integer divisor, not as a count of digits: 100
  * means two decimal places, 10 means one, and 1 means zero (the JPY case).
- * Only exact powers of ten are accepted, because any other value means the
- * column holds something this server does not understand, and silently
- * guessing a precision would corrupt every total derived from it.
+ * MMEX computes it as `(int)log10(SCALE)`.
+ *
+ * Shipped currencies use 1, 100, 10000 and 100000000, so eight decimal places
+ * is a real value and not a corruption.
+ *
+ * This never throws. The column is nullable and unconstrained, and one odd row
+ * must not take down every currency in the database: an unusable value falls
+ * back to two decimal places, which is what the overwhelming majority of
+ * currencies use.
  */
 export function placesFromScale(scale: number | null | undefined): number {
-  if (scale === null || scale === undefined) return 2;
-  if (!Number.isFinite(scale) || scale <= 0) {
-    throw new MoneyError(`CURRENCYFORMATS_V1.SCALE is not a usable divisor: ${scale}`);
-  }
+  const FALLBACK = 2;
+  if (scale === null || scale === undefined) return FALLBACK;
+  if (!Number.isFinite(scale) || scale <= 0) return FALLBACK;
+
   const digits = Math.round(Math.log10(scale));
-  if (10 ** digits !== scale || digits > 6) {
-    throw new MoneyError(`CURRENCYFORMATS_V1.SCALE is not an exact power of ten: ${scale}`);
+  if (10 ** digits !== scale) {
+    // Not a power of ten. MMEX truncates via a cast, but a non-power-of-ten
+    // means the column holds something unexpected, so prefer the common case.
+    return FALLBACK;
   }
+  if (digits < 0 || digits > 8) return FALLBACK;
   return digits;
 }
 

@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, rmSync } from "node:fs";
 import Database from "better-sqlite3";
 import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_INDEXES } from "./schema.js";
 
@@ -19,6 +19,62 @@ import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_INDEXES } from "./schema.js";
  * is the point.
  */
 
+/** INFOTABLE_V1 key identifying a file this generator produced. */
+export const GENERATED_MARKER = "MmexMcpGeneratedFixture";
+
+export class FixtureError extends Error {
+  override readonly name = "FixtureError";
+  constructor(message: string, hint?: string) {
+    super(hint ? `${message}\n  ${hint}` : message);
+  }
+}
+
+/**
+ * Refuse to overwrite a real MMEX database even when --force is given.
+ *
+ * --force exists for replacing a previously generated fixture. It is not a
+ * licence to destroy someone's finances, and the two cases are easy to tell
+ * apart: a real database has MMEX's tables in it.
+ */
+function assertNotAnMmexDatabase(path: string): void {
+  const header = Buffer.alloc(16);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, header, 0, 16, 0);
+  } finally {
+    closeSync(fd);
+  }
+  if (header.toString("latin1") !== "SQLite format 3\0") return;
+
+  let db: Database.Database | undefined;
+  try {
+    db = new Database(path, { readonly: true, fileMustExist: true });
+    const found = db
+      .prepare<[], { name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('ACCOUNTLIST_V1','CHECKINGACCOUNT_V1')",
+      )
+      .all();
+
+    // A file this generator wrote is safe to replace; anything else is not.
+    const generated = db
+      .prepare<[string], { INFOVALUE: string }>("SELECT INFOVALUE FROM INFOTABLE_V1 WHERE INFONAME = ?")
+      .get(GENERATED_MARKER);
+    if (generated !== undefined) return;
+
+    if (found.length === 2) {
+      throw new FixtureError(
+        `Refusing to overwrite what looks like a real Money Manager EX database: ${path}`,
+        "--force replaces a generated fixture. It will not overwrite an MMEX database.",
+      );
+    }
+  } catch (error) {
+    if (error instanceof FixtureError) throw error;
+    // Unreadable or not SQLite after all: nothing to protect.
+  } finally {
+    db?.close();
+  }
+}
+
 /** mulberry32: small, fast, and fully deterministic from a 32-bit seed. */
 function makeRng(seed: number): () => number {
   let a = seed >>> 0;
@@ -34,6 +90,15 @@ function makeRng(seed: number): () => number {
 export interface FixtureOptions {
   /** Any 32-bit integer. The same seed always yields the same file. */
   readonly seed?: number;
+  /**
+   * Overwrite an existing file.
+   *
+   * Off by default and deliberately awkward to turn on. `--out` is one
+   * keystroke from `--db`, and the documentation prints both within a couple
+   * of lines of each other, so a slip would otherwise write fabricated data
+   * over a real financial database that may not be backed up.
+   */
+  readonly overwrite?: boolean;
   /** How many months of history to generate, ending at anchorDate. */
   readonly months?: number;
   /** Last date in the generated history, ISO YYYY-MM-DD. Never "today". */
@@ -146,7 +211,21 @@ export function generateFixture(outPath: string, options: FixtureOptions = {}): 
   const anchorDate = options.anchorDate ?? "2026-06-30";
   const rng = makeRng(seed);
 
-  rmSync(outPath, { force: true });
+  if (existsSync(outPath)) {
+    if (!options.overwrite) {
+      throw new FixtureError(
+        `Refusing to overwrite an existing file: ${outPath}`,
+        "Choose another --out path, or pass --force if you meant to replace it.",
+      );
+    }
+    assertNotAnMmexDatabase(outPath);
+    rmSync(outPath, { force: true });
+    // A leftover sidecar would otherwise be paired with the new database.
+    rmSync(`${outPath}-wal`, { force: true });
+    rmSync(`${outPath}-shm`, { force: true });
+    rmSync(`${outPath}-journal`, { force: true });
+  }
+
   const db = new Database(outPath);
   // Fixed page size and no WAL sidecar, so the file is reproducible byte for byte.
   db.pragma("page_size = 4096");
@@ -179,6 +258,9 @@ export function generateFixture(outPath: string, options: FixtureOptions = {}): 
       ["DataVersion", "19"],
       ["DateFormat", "%Y-%m-%d"],
       ["CreatedAt", `${startDate} 00:00:00`],
+      // Marks this file as fabricated. --force will replace a stamped file and
+      // refuses an unstamped one, so a real database is never a candidate.
+      [GENERATED_MARKER, "mmex-mcp fixture: synthetic data, not real finances"],
     ] as const) {
       info.run(k, v);
     }

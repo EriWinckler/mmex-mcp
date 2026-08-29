@@ -124,8 +124,13 @@ it uses in its own description.**
 a storage multiplier: amounts are stored as plain decimals, `12.34` and not `1234`.
 
 Across all shipped currencies the values are `1`, `100`, `10000` and `100000000`,
-all powers of ten. The column is nullable and unconstrained, so this server
-defaults to 2 decimals when it is NULL or zero.
+all powers of ten, giving 0, 2, 4 and 8 decimal places.
+
+The column is nullable and unconstrained. This server falls back to 2 decimal
+places for NULL, zero, a negative, or anything that is not a power of ten, and
+never throws: the conversion runs over every row of `CURRENCYFORMATS_V1` when
+the resolver is built, and one unusable row must not take every other currency
+down with it.
 
 ### Categories
 

@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `mmex-fixture` overwrote an existing file without warning. It now refuses
+  unless `--force` is given, and refuses a real Money Manager EX database even
+  then.
+- `--snapshot` copied only the main database file, so on a WAL-mode database it
+  silently omitted every transaction not yet checkpointed. It now uses SQLite's
+  `VACUUM INTO`, which is WAL-aware.
+- `--snapshot` left its temporary copy behind when the client detached by
+  closing stdin, which is the normal way an MCP session ends. Cleanup now runs
+  on every exit path, and the copy is written with owner-only permissions.
+- `isForeignAsTransfer` could never match the asset-transfer sentinel, and
+  returned NULL rather than false for ordinary transactions, which would have
+  filtered out nearly every row for any caller using it.
+- `placesFromScale` rejected the eight-decimal currencies MMEX ships, and threw
+  on an unusable value instead of falling back, taking down every other currency
+  with it.
+
 - `--redact` was documented but inert: the redaction helpers were never called
   by any tool.
 - A failed `--snapshot` copy left a partial copy of the database in the temp

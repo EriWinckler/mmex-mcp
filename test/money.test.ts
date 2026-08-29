@@ -26,10 +26,20 @@ describe("placesFromScale", () => {
     expect(placesFromScale(undefined)).toBe(2);
   });
 
-  it("refuses a value that is not an exact power of ten rather than guessing", () => {
-    expect(() => placesFromScale(50)).toThrow(MoneyError);
-    expect(() => placesFromScale(0)).toThrow(MoneyError);
-    expect(() => placesFromScale(-100)).toThrow(MoneyError);
+  it("accepts the eight-decimal currency MMEX actually ships", () => {
+    // Shipped SCALE values are 1, 100, 10000 and 100000000. An earlier version
+    // capped at six digits and threw on the last one.
+    expect(placesFromScale(10000)).toBe(4);
+    expect(placesFromScale(100000000)).toBe(8);
+  });
+
+  it("falls back to 2 instead of throwing, so one odd row cannot break every currency", () => {
+    // placesFromScale runs inside CurrencyResolver's constructor, over every
+    // row in CURRENCYFORMATS_V1. Throwing on a single unusable value took the
+    // whole resolver down with it.
+    for (const bad of [0, -100, 50, Number.NaN, Number.POSITIVE_INFINITY, 1e300]) {
+      expect(placesFromScale(bad), String(bad)).toBe(2);
+    }
   });
 });
 

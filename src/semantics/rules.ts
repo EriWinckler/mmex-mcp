@@ -101,8 +101,20 @@ export function accountFlow(alias: string, accountIdSql: string): string {
 export const AS_TRANSFER_SENTINEL = -998;
 
 export function isForeignAsTransfer(alias = "t"): string {
-  return `(${alias}.TRANSCODE <> 'Transfer' AND ${alias}.TOACCOUNTID > 0
-    AND (${alias}.TOACCOUNTID = ${AS_TRANSFER_SENTINEL} OR ${alias}.TOACCOUNTID = ${alias}.ACCOUNTID))`;
+  // IFNULL wraps the whole expression because TOACCOUNTID is NULL on ordinary
+  // withdrawals and deposits, which are nearly every row in a real database.
+  // Without it the expression is NULL rather than false, and a caller writing
+  // the natural `WHERE NOT (...)` would filter out every ordinary transaction
+  // and report near-zero income and expense.
+  //
+  // There is deliberately no `TOACCOUNTID > 0` guard: the sentinel is negative,
+  // so that condition made the sentinel branch unreachable.
+  return `IFNULL(
+    ${alias}.TRANSCODE <> 'Transfer'
+    AND ${alias}.TOACCOUNTID IS NOT NULL
+    AND ${alias}.TOACCOUNTID <> -1
+    AND (${alias}.TOACCOUNTID = ${AS_TRANSFER_SENTINEL} OR ${alias}.TOACCOUNTID = ${alias}.ACCOUNTID)
+  , 0)`;
 }
 
 /**

@@ -18,8 +18,13 @@ Options:
   --months <n>            Months of history to generate (default: 18)
   --anchor <YYYY-MM-DD>   Last date in the history (default: 2026-06-30).
                           Fixed rather than "today" so output stays stable.
+  --force                 Replace an existing file. Refused for anything that
+                          looks like a real Money Manager EX database.
   --json                  Print the summary as JSON
   --help                  Show this message
+
+Writes fabricated data. It will not overwrite an existing file unless you
+pass --force, because --out is one keystroke from --db.
 `;
 
 function main(): void {
@@ -40,6 +45,7 @@ function main(): void {
     seed: intFlag(args, "seed", 42),
     months: intFlag(args, "months", 18),
     anchorDate: anchor,
+    overwrite: boolFlag(args, "force"),
   });
 
   if (boolFlag(args, "json")) {

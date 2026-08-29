@@ -1,12 +1,25 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { liveRows } from "../semantics/rules.js";
-import type { ServerContext } from "../server/context.js";
+import { maybeRedactPath, type ServerContext } from "../server/context.js";
 
 const outputSchema = {
   database: z.object({
-    path: z.string().describe("Path opened. Differs from the source when running with --snapshot."),
+    path: z
+      .string()
+      .describe(
+        "Path opened. Differs from the source when running with --snapshot. Basename only under --redact.",
+      ),
     schemaVersion: z.string().nullable().describe("MMEX DataVersion from INFOTABLE_V1."),
+    schemaVerified: z
+      .boolean()
+      .describe("Whether these semantics were verified against this schema version."),
+    schemaWarning: z
+      .string()
+      .nullable()
+      .describe(
+        "Set when the schema version is unknown or newer than what was verified. Report it to the user.",
+      ),
     baseCurrency: z.string().nullable().describe("Symbol of the base currency all totals convert to."),
   }),
   safety: z.object({
@@ -71,8 +84,10 @@ export function registerDatabaseInfo(server: McpServer, context: ServerContext):
 
       const structuredContent = {
         database: {
-          path: db.openedPath,
-          schemaVersion: db.info.get("dataversion") ?? null,
+          path: maybeRedactPath(context, db.openedPath),
+          schemaVersion: db.schema.version,
+          schemaVerified: db.schema.verified,
+          schemaWarning: db.schema.warning,
           baseCurrency: base?.CURRENCY_SYMBOL ?? null,
         },
         safety: {

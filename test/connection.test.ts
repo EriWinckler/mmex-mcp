@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { MmexDatabaseError, openReadOnly } from "../src/db/connection.js";
 import { makeGarbageFile, makeNonMmexDb, makeTinyMmexDb } from "./helpers/tiny-db.js";
@@ -92,6 +93,47 @@ describe("input validation", () => {
     const { path, dir } = makeNonMmexDb();
     cleanup.push(dir);
     expect(() => openReadOnly(path)).toThrow(/not a Money Manager EX one/);
+  });
+});
+
+describe("schema compatibility", () => {
+  it("marks a known schema version as verified", () => {
+    const { path, dir } = makeTinyMmexDb();
+    cleanup.push(dir);
+    const db = openReadOnly(path);
+    expect(db.schema.version).toBe("19");
+    expect(db.schema.verified).toBe(true);
+    expect(db.schema.warning).toBeNull();
+    db.close();
+  });
+
+  it("warns rather than silently trusting an unknown schema version", () => {
+    const { path, dir } = makeTinyMmexDb();
+    cleanup.push(dir);
+    // Rewrite DataVersion to something these semantics were never checked against.
+    const w = new Database(path);
+    w.prepare("UPDATE INFOTABLE_V1 SET INFOVALUE = ? WHERE INFONAME = ?").run("99", "DataVersion");
+    w.close();
+
+    const db = openReadOnly(path);
+    expect(db.schema.verified).toBe(false);
+    expect(db.schema.warning).toContain("99");
+    expect(db.schema.warning).toContain("may be wrong");
+    db.close();
+  });
+
+  it("warns when the database reports no schema version at all", () => {
+    const { path, dir } = makeTinyMmexDb();
+    cleanup.push(dir);
+    const w = new Database(path);
+    w.exec("DELETE FROM INFOTABLE_V1 WHERE INFONAME = 'DataVersion'");
+    w.close();
+
+    const db = openReadOnly(path);
+    expect(db.schema.version).toBeNull();
+    expect(db.schema.verified).toBe(false);
+    expect(db.schema.warning).toContain("no schema version");
+    db.close();
   });
 });
 

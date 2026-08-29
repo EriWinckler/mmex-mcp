@@ -23,6 +23,15 @@ const SQLITE_MAGIC = "SQLite format 3\0";
 /** Tables an MMEX database must have for this server to be useful. */
 const REQUIRED_TABLES = ["ACCOUNTLIST_V1", "CHECKINGACCOUNT_V1", "CATEGORY_V1", "CURRENCYFORMATS_V1"];
 
+/**
+ * MMEX schema versions this server's semantics were verified against.
+ *
+ * The rules in src/semantics were read from Money Manager EX 1.9.4's source.
+ * A newer schema may change them, and silently returning numbers derived from
+ * stale rules is worse than saying so, hence the warning.
+ */
+export const VERIFIED_SCHEMA_VERSIONS = ["19"] as const;
+
 export class MmexDatabaseError extends Error {
   override readonly name = "MmexDatabaseError";
   constructor(
@@ -55,12 +64,21 @@ export interface ReadOnlyProof {
   readonly writeRejectedWith: string | null;
 }
 
+export interface SchemaCompatibility {
+  readonly version: string | null;
+  readonly verified: boolean;
+  /** Populated when the version is unknown or newer than what was verified. */
+  readonly warning: string | null;
+}
+
 export interface MmexDatabase {
   /** Path actually opened. Differs from the requested path when snapshotting. */
   readonly openedPath: string;
   readonly sourcePath: string;
   /** Contents of INFOTABLE_V1, lowercased keys. Empty if the table is absent. */
   readonly info: ReadonlyMap<string, string>;
+  /** Whether this database's schema version is one the semantics were verified against. */
+  readonly schema: SchemaCompatibility;
   /**
    * Prove the read-only posture by attempting a write and reporting how
    * SQLite refused it. The probe is `DELETE ... WHERE 1 = 0`, which changes
@@ -116,7 +134,17 @@ export function openReadOnly(path: string, options: OpenOptions = {}): MmexDatab
   if (options.snapshot) {
     tempDir = mkdtempSync(join(tmpdir(), "mmex-mcp-"));
     openedPath = join(tempDir, basename(path));
-    copyFileSync(path, openedPath);
+    try {
+      copyFileSync(path, openedPath);
+    } catch (error) {
+      // Without this, a failed copy (a full disk is the usual cause) leaves a
+      // partial copy of the user's financial database in the temp directory.
+      rmSync(tempDir, { recursive: true, force: true });
+      throw new MmexDatabaseError(
+        `Could not snapshot the database: ${(error as Error).message}`,
+        "Check free space in the temp directory, or run without --snapshot.",
+      );
+    }
   }
 
   let db: Database.Database;
@@ -163,11 +191,24 @@ export function openReadOnly(path: string, options: OpenOptions = {}): MmexDatab
     }
   }
 
+  const version = info.get("dataversion") ?? null;
+  const verified = version !== null && (VERIFIED_SCHEMA_VERSIONS as readonly string[]).includes(version);
+  const schema: SchemaCompatibility = {
+    version,
+    verified,
+    warning: verified
+      ? null
+      : version === null
+        ? "This database reports no schema version (INFOTABLE_V1.DataVersion is absent). Results are unverified."
+        : `This database reports schema version ${version}, but these semantics were verified against ${VERIFIED_SCHEMA_VERSIONS.join(", ")}. Results may be wrong if the schema changed.`,
+  };
+
   let closed = false;
   const handle: MmexDatabase = {
     openedPath,
     sourcePath: path,
     info,
+    schema,
     verifyReadOnly(): ReadOnlyProof {
       const pragma = db.pragma("query_only") as Array<{ query_only: number }>;
       let writeRejectedWith: string | null = null;

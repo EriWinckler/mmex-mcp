@@ -96,6 +96,42 @@ describe("mmex_database_info", () => {
     db.close();
   });
 
+  it("actually redacts the database path, not just reports the flag", async () => {
+    // Regression: redactName/maybeRedact existed but no tool called them, so
+    // --redact was documented and did nothing. A filesystem path is
+    // identifying: /home/jsmith/finances.mmb names a person.
+    const plain = await connect(false);
+    const plainResult = await plain.client.callTool({ name: "mmex_database_info", arguments: {} });
+    const plainPath = (plainResult.structuredContent as { database: { path: string } }).database.path;
+    await plain.client.close();
+    plain.db.close();
+
+    const redacted = await connect(true);
+    const redactedResult = await redacted.client.callTool({ name: "mmex_database_info", arguments: {} });
+    const redactedPath = (redactedResult.structuredContent as { database: { path: string } }).database.path;
+    await redacted.client.close();
+    redacted.db.close();
+
+    expect(plainPath).toContain("/");
+    expect(redactedPath).not.toContain("/");
+    expect(redactedPath).toBe("demo.mmb");
+  });
+
+  it("reports schema compatibility rather than silently trusting the database", async () => {
+    const { client, db } = await connect();
+    const result = await client.callTool({ name: "mmex_database_info", arguments: {} });
+    const database = (
+      result.structuredContent as {
+        database: { schemaVersion: string; schemaVerified: boolean; schemaWarning: string | null };
+      }
+    ).database;
+    expect(database.schemaVersion).toBe("19");
+    expect(database.schemaVerified).toBe(true);
+    expect(database.schemaWarning).toBeNull();
+    await client.close();
+    db.close();
+  });
+
   it("reports when redaction is active", async () => {
     const { client, db } = await connect(true);
     const result = await client.callTool({ name: "mmex_database_info", arguments: {} });

@@ -32,3 +32,13 @@ export function maybeRedact(
 ): string {
   return context.redact ? redactName(name, kind) : name;
 }
+
+/**
+ * A filesystem path is identifying too: /home/jsmith/finances.mmb names a
+ * person. Under redaction only the basename survives.
+ */
+export function maybeRedactPath(context: ServerContext, path: string): string {
+  if (!context.redact) return path;
+  const parts = path.split(/[/\\]/);
+  return parts[parts.length - 1] ?? "database.mmb";
+}

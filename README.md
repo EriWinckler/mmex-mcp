@@ -131,6 +131,7 @@ Under active development. What works today:
 | MCP server + Claude Code integration | Done |
 | Configurable LLM provider for the accuracy suite | Done |
 | `mmex_database_info` tool | Done |
+| Schema-version compatibility check | Done |
 | Remaining 8 analytics tools | **In progress** |
 | Answer-accuracy regression suite | **Planned** |
 | CI | **Planned** |
@@ -151,11 +152,14 @@ is designed to be *checkable* rather than promised.
 - **No network. At all.** The server opens no sockets. The only outbound call in
   the whole repository lives in the eval harness, which is a separate tool you
   run deliberately.
-- **Three runtime dependencies**, so the tree is small enough to audit:
-  `@modelcontextprotocol/sdk`, `better-sqlite3`, `zod`.
-- **`--redact`** replaces payee, account and category names with stable
-  placeholders while leaving every amount intact. For screen sharing, demos and
-  bug reports.
+- **Three direct runtime dependencies**: `@modelcontextprotocol/sdk`,
+  `better-sqlite3`, `zod`. Being precise, since it matters for a tool that
+  reads your finances: those pull in **97 packages transitively**, most of them
+  from the MCP SDK, which bundles an HTTP transport stack this server never
+  uses. `npm ls --omit=dev --all` shows the full tree.
+- **`--redact`** replaces payee, account and category names, and reduces the
+  database path to its basename, with stable placeholders. Every amount is left
+  intact, so the numbers still make sense. For screen sharing and bug reports.
 - **`--snapshot`** reads a temporary copy, so a running MMEX is never touched.
 - **API keys are never stored in config.** The config file holds the *name* of an
   environment variable, and an inline `apiKey` is rejected with an explicit

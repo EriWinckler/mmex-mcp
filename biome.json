@@ -5,7 +5,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "suspicious": { "noConsole": "off" },
       "style": { "useNodejsImportProtocol": "error" }
     }

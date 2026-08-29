@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { boolFlag, parseArgs, stringFlag } from "../cli/args.js";
 import { ConfigError, loadConfig, requireDatabasePath } from "../config/config.js";
 import { MmexDatabaseError, openReadOnly } from "../db/connection.js";
+import { log } from "../log/logger.js";
 import { buildServer, SERVER_VERSION } from "../server/server.js";
 
 const USAGE = `mmex-mcp ${SERVER_VERSION}: read-only MCP server for Money Manager EX
@@ -56,9 +57,22 @@ async function main(): Promise<void> {
   });
 
   const db = openReadOnly(requireDatabasePath(config), { snapshot: config.database.snapshot });
+
+  // Counts and flags only. Never an amount, a payee, or a path.
+  log.info("opened database", {
+    snapshot: config.database.snapshot,
+    redact: config.database.redact,
+    schemaVersion: db.schema.version,
+    schemaVerified: db.schema.verified,
+  });
+  if (db.schema.warning !== null) {
+    log.warn(db.schema.warning);
+  }
+
   const { server } = buildServer({ db, redact: config.database.redact });
 
   const shutdown = (): void => {
+    log.info("shutting down");
     db.close();
     process.exit(0);
   };

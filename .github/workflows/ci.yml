@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # better-sqlite3 is a native module, so the prebuilt binary is worth
+        # exercising on every platform someone might install this on.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      # The bins are the actual product. Prove they run after a real build,
+      # and that the fixture is reproducible on this platform.
+      - name: Smoke test the CLI
+        shell: bash
+        run: |
+          node dist/bin/fixture.js --out a.mmb --seed 42
+          node dist/bin/fixture.js --out b.mmb --seed 42
+          cmp a.mmb b.mmb
+          node dist/bin/server.js --help > /dev/null
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

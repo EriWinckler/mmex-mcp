@@ -1,0 +1,160 @@
+/**
+ * MMEX table definitions, as much of the schema as this server reads.
+ *
+ * Authored here rather than copied from the upstream `moneymanagerex/database`
+ * repository: MMEX is GPL-2.0 and this project is MIT, so the DDL below is
+ * written against the documented table and column names (which are facts
+ * about the format, not expression) instead of reproducing their file. Types
+ * and nullability follow what MMEX actually writes, verified against a real
+ * database file.
+ *
+ * Only the tables the v1 tools read are defined. A generated fixture is
+ * therefore a valid subset of an MMEX database, not a complete one.
+ */
+export const MMEX_SCHEMA_DDL: readonly string[] = [
+  `CREATE TABLE ACCOUNTLIST_V1(
+     ACCOUNTID integer primary key
+   , ACCOUNTNAME TEXT COLLATE NOCASE NOT NULL UNIQUE
+   , ACCOUNTTYPE TEXT NOT NULL
+   , ACCOUNTNUM TEXT
+   , STATUS TEXT NOT NULL
+   , NOTES TEXT
+   , HELDAT TEXT
+   , WEBSITE TEXT
+   , CONTACTINFO TEXT
+   , ACCESSINFO TEXT
+   , INITIALBAL numeric
+   , INITIALDATE TEXT
+   , FAVORITEACCT TEXT NOT NULL
+   , CURRENCYID integer NOT NULL
+   , STATEMENTLOCKED integer
+   , STATEMENTDATE TEXT
+   , MINIMUMBALANCE numeric
+   , CREDITLIMIT numeric
+   , INTERESTRATE numeric
+   , PAYMENTDUEDATE text
+   , MINIMUMPAYMENT numeric)`,
+
+  `CREATE TABLE CHECKINGACCOUNT_V1(
+     TRANSID integer primary key
+   , ACCOUNTID integer NOT NULL
+   , TOACCOUNTID integer
+   , PAYEEID integer NOT NULL
+   , TRANSCODE TEXT NOT NULL
+   , TRANSAMOUNT numeric NOT NULL
+   , STATUS TEXT
+   , TRANSACTIONNUMBER TEXT
+   , NOTES TEXT
+   , CATEGID integer
+   , TRANSDATE TEXT
+   , LASTUPDATEDTIME TEXT
+   , DELETEDTIME TEXT
+   , FOLLOWUPID integer
+   , TOTRANSAMOUNT numeric
+   , COLOR integer DEFAULT -1)`,
+
+  `CREATE TABLE SPLITTRANSACTIONS_V1(
+     SPLITTRANSID integer primary key
+   , TRANSID integer NOT NULL
+   , CATEGID integer
+   , SPLITTRANSAMOUNT numeric
+   , NOTES TEXT)`,
+
+  `CREATE TABLE CATEGORY_V1(
+     CATEGID INTEGER PRIMARY KEY
+   , CATEGNAME TEXT NOT NULL COLLATE NOCASE
+   , ACTIVE INTEGER
+   , PARENTID INTEGER
+   , UNIQUE(CATEGNAME, PARENTID))`,
+
+  `CREATE TABLE PAYEE_V1(
+     PAYEEID integer primary key
+   , PAYEENAME TEXT COLLATE NOCASE NOT NULL UNIQUE
+   , CATEGID integer
+   , NUMBER TEXT
+   , WEBSITE TEXT
+   , NOTES TEXT
+   , ACTIVE integer
+   , PATTERN TEXT DEFAULT '')`,
+
+  `CREATE TABLE CURRENCYFORMATS_V1(
+     CURRENCYID integer primary key
+   , CURRENCYNAME TEXT COLLATE NOCASE NOT NULL UNIQUE
+   , PFX_SYMBOL TEXT
+   , SFX_SYMBOL TEXT
+   , DECIMAL_POINT TEXT
+   , GROUP_SEPARATOR TEXT
+   , UNIT_NAME TEXT COLLATE NOCASE
+   , CENT_NAME TEXT COLLATE NOCASE
+   , SCALE integer
+   , BASECONVRATE numeric
+   , CURRENCY_SYMBOL TEXT COLLATE NOCASE NOT NULL UNIQUE
+   , CURRENCY_TYPE TEXT NOT NULL)`,
+
+  `CREATE TABLE CURRENCYHISTORY_V1(
+     CURRHISTID INTEGER PRIMARY KEY
+   , CURRENCYID INTEGER NOT NULL
+   , CURRDATE TEXT NOT NULL
+   , CURRVALUE NUMERIC NOT NULL
+   , CURRUPDTYPE INTEGER
+   , UNIQUE(CURRENCYID, CURRDATE))`,
+
+  `CREATE TABLE INFOTABLE_V1(
+     INFOID integer not null primary key
+   , INFONAME TEXT COLLATE NOCASE NOT NULL UNIQUE
+   , INFOVALUE TEXT NOT NULL)`,
+
+  `CREATE TABLE BUDGETYEAR_V1(
+     BUDGETYEARID integer primary key
+   , BUDGETYEARNAME TEXT NOT NULL UNIQUE)`,
+
+  `CREATE TABLE BUDGETTABLE_V1(
+     BUDGETENTRYID integer primary key
+   , BUDGETYEARID integer
+   , CATEGID integer
+   , PERIOD TEXT NOT NULL
+   , AMOUNT numeric NOT NULL
+   , NOTES TEXT
+   , ACTIVE integer)`,
+
+  `CREATE TABLE BILLSDEPOSITS_V1(
+     BDID integer primary key
+   , ACCOUNTID integer NOT NULL
+   , TOACCOUNTID integer
+   , PAYEEID integer NOT NULL
+   , TRANSCODE TEXT NOT NULL
+   , TRANSAMOUNT numeric NOT NULL
+   , STATUS TEXT
+   , TRANSACTIONNUMBER TEXT
+   , NOTES TEXT
+   , CATEGID integer
+   , TRANSDATE TEXT
+   , FOLLOWUPID integer
+   , TOTRANSAMOUNT numeric
+   , REPEATS integer
+   , NEXTOCCURRENCEDATE TEXT
+   , NUMOCCURRENCES integer
+   , COLOR integer DEFAULT -1)`,
+
+  `CREATE TABLE TAG_V1(
+     TAGID INTEGER PRIMARY KEY
+   , TAGNAME TEXT COLLATE NOCASE NOT NULL UNIQUE
+   , ACTIVE INTEGER)`,
+
+  `CREATE TABLE TAGLINK_V1(
+     TAGLINKID INTEGER PRIMARY KEY
+   , REFTYPE TEXT NOT NULL
+   , REFID INTEGER NOT NULL
+   , TAGID INTEGER NOT NULL
+   , FOREIGN KEY (TAGID) REFERENCES TAG_V1 (TAGID)
+   , UNIQUE(REFTYPE, REFID, TAGID))`,
+];
+
+/** Indexes MMEX itself creates. Present so query plans in the fixture match reality. */
+export const MMEX_SCHEMA_INDEXES: readonly string[] = [
+  "CREATE INDEX IDX_CHECKINGACCOUNT_ACCOUNT ON CHECKINGACCOUNT_V1(ACCOUNTID)",
+  "CREATE INDEX IDX_CHECKINGACCOUNT_DATE ON CHECKINGACCOUNT_V1(TRANSDATE)",
+  "CREATE INDEX IDX_CHECKINGACCOUNT_CATEG ON CHECKINGACCOUNT_V1(CATEGID)",
+  "CREATE INDEX IDX_SPLIT_TRANS ON SPLITTRANSACTIONS_V1(TRANSID)",
+  "CREATE INDEX IDX_CURRHIST ON CURRENCYHISTORY_V1(CURRENCYID, CURRDATE)",
+];

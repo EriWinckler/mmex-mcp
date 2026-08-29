@@ -58,8 +58,8 @@ provable:
 - `PRAGMA query_only = ON` refuses them at the SQL level, even if a future code
   path somehow obtained a writable handle.
 
-`verifyReadOnly()` proves it rather than asserting it. It attempts a real write
-and reports the SQLite error code that refused it. The probe is
+`verifyReadOnly()` attempts a real write and reports the SQLite error code that
+refused it. The probe is
 `DELETE FROM ACCOUNTLIST_V1 WHERE 1 = 0`, chosen because it changes nothing even
 in the failure case where it is somehow permitted.
 

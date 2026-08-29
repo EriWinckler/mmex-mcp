@@ -114,7 +114,7 @@ Selected by default, or explicitly:
 { "llm": { "provider": "claude-code", "model": "haiku" } }
 ```
 
-**Cost, measured rather than estimated.** Every headless invocation is a fresh
+**Cost.** Every headless invocation is a fresh
 session that pays full cache-creation cost for Claude Code's system prompt. On
 this machine a single trivial question cost:
 

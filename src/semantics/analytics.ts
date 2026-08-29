@@ -209,7 +209,19 @@ export interface CategoryTotal {
 
 export interface SpendingByCategoryResult {
   readonly categories: readonly CategoryTotal[];
+  /** Over ALL groups, including those below the cap. Never the sum of `categories`. */
   readonly totalBase: Minor;
+  /**
+   * The groups that did not fit under the cap, folded into one figure.
+   *
+   * This exists so `sum(categories) + otherBase = totalBase` holds exactly. A
+   * capped aggregate without it invites a reader to add up the visible rows and
+   * report a total short by the entire tail, which is the same class of silent
+   * wrongness this server exists to prevent.
+   */
+  readonly otherBase: Minor;
+  readonly otherGroups: number;
+  readonly groupsTotal: number;
   readonly uncategorizedBase: Minor;
   readonly transfersExcluded: number;
   readonly assetTransfersExcluded: number;
@@ -338,17 +350,25 @@ export function spendingByCategory(
 
   all.sort((a, b) => Math.abs(b.amountBase.units) - Math.abs(a.amountBase.units));
   const uncategorized = all.find((c) => c.categoryId <= 0);
+  const shown = all.slice(0, limit);
+  const tail = all.slice(limit);
 
   return {
-    categories: all.slice(0, limit),
+    categories: shown,
     totalBase: sumMinor(
       all.map((c) => c.amountBase),
       basePlaces,
     ),
+    otherBase: sumMinor(
+      tail.map((c) => c.amountBase),
+      basePlaces,
+    ),
+    otherGroups: tail.length,
+    groupsTotal: all.length,
     uncategorizedBase: uncategorized?.amountBase ?? { units: 0, places: basePlaces },
     transfersExcluded: excluded?.transfers ?? 0,
     assetTransfersExcluded: excluded?.assets ?? 0,
-    truncated: all.length > limit,
+    truncated: tail.length > 0,
     basis,
   };
 }

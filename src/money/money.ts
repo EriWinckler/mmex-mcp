@@ -96,20 +96,28 @@ export function recoverMinor(amount: number, places: number, strict = false): Mi
  * Round an arbitrary real number to minor units, half away from zero.
  *
  * Used where a genuine rounding decision is being made, such as after a
- * currency conversion. Half away from zero is the convention a person doing
- * this by hand expects (0.005 becomes 0.01, and -0.005 becomes -0.01), and it
- * keeps rounding symmetric so a sign flip never changes the magnitude.
+ * currency conversion. Half away from zero keeps rounding symmetric, so a sign
+ * flip never changes the magnitude.
+ *
+ * This deliberately rounds the double it is given, with no epsilon correction.
+ * An earlier version nudged the value by 4 ULP first, on the theory that a
+ * decimal sitting exactly on the half might be represented just below it. That
+ * gap is at most 0.5 ULP, so a 4 ULP nudge over-corrected by eight times and
+ * produced real errors: converting 10,000,000,000,000.00 at a rate of exactly
+ * 1.0 came back one minor unit larger than it went in.
+ *
+ * Recovering a decimal a user actually typed is `recoverMinor`'s job, and it
+ * does not need a nudge either. This function's input is a computed real with
+ * no decimal intent to recover, so the nearest representable answer is the
+ * right one.
  */
 export function roundToMinor(value: number, places: number): Minor {
   if (!Number.isFinite(value)) {
     throw new MoneyError(`value is not a finite number: ${value}`);
   }
   const scaled = value * 10 ** places;
-  // Nudge by one unit in the last place before rounding so that a decimal
-  // exactly on the half, which the double may sit just below, still rounds up.
-  const nudged = scaled + Math.sign(scaled) * Math.abs(scaled) * Number.EPSILON * 4;
-  const units = Math.sign(nudged) * Math.floor(Math.abs(nudged) + 0.5);
-  return { units: assertSafe(units, "roundToMinor"), places: places };
+  const units = Math.sign(scaled) * Math.round(Math.abs(scaled));
+  return { units: assertSafe(units, "roundToMinor"), places };
 }
 
 function samePlaces(a: Minor, b: Minor): void {

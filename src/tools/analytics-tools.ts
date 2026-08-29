@@ -13,6 +13,8 @@ import {
   basis,
   basisSchema,
   clampLimit,
+  coverage,
+  coverageSchema,
   page,
   pageSchema,
   READ_ONLY_TOOL,
@@ -66,11 +68,14 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
             shareOfTotal: z.number().describe("Fraction of the total, 0 to 1."),
           }),
         ),
-        total: amountSchema,
+        total: amountSchema.describe(
+          "Total over ALL categories, including any below the cap. Do NOT re-derive this by " +
+            "summing the returned categories; add coverage.other.amount to them instead.",
+        ),
         uncategorized: amountSchema.describe("Amount with no category, reported rather than dropped."),
         transfersExcluded: z.number().int().describe("Transfers left out, which are not spending."),
         assetTransfersExcluded: z.number().int().describe("Asset and share movements left out."),
-        page: pageSchema,
+        coverage: coverageSchema,
         basis: basisSchema,
       },
       annotations: READ_ONLY_TOOL,
@@ -99,11 +104,12 @@ export function registerAnalyticsTools(server: McpServer, context: ServerContext
         uncategorized: amount(result.uncategorizedBase, currency),
         transfersExcluded: result.transfersExcluded,
         assetTransfersExcluded: result.assetTransfersExcluded,
-        page: page({
-          returned: result.categories.length,
-          limit,
-          offset: 0,
-          totalMatching: result.truncated ? null : result.categories.length,
+        coverage: coverage({
+          groupsReturned: result.categories.length,
+          groupsTotal: result.groupsTotal,
+          otherGroups: result.otherGroups,
+          otherAmount: result.otherBase,
+          currency,
         }),
         basis: basis(db, resolver, result.basis, [
           ...EXCLUDED_ALWAYS,

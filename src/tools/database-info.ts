@@ -59,7 +59,9 @@ export function registerDatabaseInfo(server: McpServer, context: ServerContext):
       description:
         "Describe the connected Money Manager EX database: schema version, base currency, " +
         "date range, account and transaction counts, and the server's safety posture. " +
-        "Call this first to learn what data is available and over what period.",
+        "Call this first to learn what data is available and over what period. " +
+        "Use the other mmex tools for figures; do not query the database file directly, " +
+        "because raw SQL over this schema returns plausible but wrong numbers.",
       inputSchema: {},
       outputSchema,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

@@ -269,3 +269,32 @@ describe("transaction search", () => {
     expect(all.totalMatching).toBe(0);
   });
 });
+
+describe("a capped aggregate stays reconcilable", () => {
+  it("keeps shown + other = total exactly, so a reader cannot derive a short total", () => {
+    // The failure this guards: someone (or a model) adds up the visible
+    // categories and reports that as the total, which is short by the entire
+    // tail below the cap. The remainder bucket makes the arithmetic checkable.
+    const full = spendingByCategory(db, resolver, tree, { limit: 100 });
+    const capped = spendingByCategory(db, resolver, tree, { limit: 1 });
+
+    expect(capped.categories).toHaveLength(1);
+    expect(capped.truncated).toBe(true);
+    expect(capped.otherGroups).toBe(full.categories.length - 1);
+
+    const shown = capped.categories.reduce((sum, c) => sum + c.amountBase.units, 0);
+    expect(shown + capped.otherBase.units).toBe(capped.totalBase.units);
+
+    // And the capped total equals the uncapped total: capping never changes it.
+    expect(capped.totalBase.units).toBe(full.totalBase.units);
+  });
+
+  it("reports no remainder when nothing was capped", () => {
+    const result = spendingByCategory(db, resolver, tree, { limit: 100 });
+    expect(result.truncated).toBe(false);
+    expect(result.otherGroups).toBe(0);
+    expect(result.otherBase.units).toBe(0);
+    const shown = result.categories.reduce((sum, c) => sum + c.amountBase.units, 0);
+    expect(shown).toBe(result.totalBase.units);
+  });
+});

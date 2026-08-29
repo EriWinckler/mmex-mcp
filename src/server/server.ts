@@ -33,18 +33,22 @@ export function buildServer(options: BuildOptions): { server: McpServer; context
     {
       instructions:
         "Read-only access to a Money Manager EX database.\n\n" +
-        "Answer money questions with these tools only. Do NOT query the .mmb file " +
-        "directly with sqlite3, Bash, or any other client, and do not ask the user " +
-        "for its path. Raw SQL over this schema produces confidently wrong numbers: " +
-        "a transfer between the user's own accounts looks like an expense, split " +
-        "transactions carry their category on a separate table so they get misfiled " +
-        "or dropped, deleted rows are still present, amounts are floats that do not " +
-        "sum exactly, and foreign-currency rows need the exchange rate as of each " +
-        "transaction's own date. These tools already handle all of that.\n\n" +
-        "Call mmex_database_info first to see what period the data covers. If it " +
-        "returns a schemaWarning, tell the user before giving them figures.\n\n" +
-        "Amounts are returned as exact decimal strings in the base currency. Report " +
-        "them as given rather than reformatting or re-deriving them.",
+        "Answer money questions with these tools only. Never query the .mmb file directly with " +
+        "sqlite3, a SQLite library, or a shell, and do not compute figures yourself from raw rows. " +
+        "Five traps in this schema each silently corrupt a hand-written query: transfers between " +
+        "the user's own accounts are a single row and are neither income nor expense; split " +
+        "transactions carry their category on child rows, not the parent; deleted rows are " +
+        "soft-deleted and still present; categories form a tree rooted at PARENTID = -1, so totals " +
+        "do not roll up on their own; and amounts are floats, so sums drift. The result looks right " +
+        "and is wrong by a plausible amount. These tools handle all five.\n\n" +
+        "Amounts come back as an exact decimal string in `text` plus integer minor units in " +
+        "`minor`. Quote `text` verbatim and do arithmetic on `minor`. Do not reformat or re-derive " +
+        "a figure.\n\n" +
+        "When a result carries `coverage`, its `total` is over every group including those below " +
+        "the cap. Do not add up the returned rows to get a total; that figure is short by " +
+        "`coverage.other.amount`.\n\n" +
+        "Call mmex_database_info first to see what period the data covers. If it returns a " +
+        "schemaWarning, tell the user before quoting any figure.",
     },
   );
 

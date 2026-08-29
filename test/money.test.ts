@@ -75,11 +75,31 @@ describe("recoverMinor", () => {
 });
 
 describe("roundToMinor", () => {
-  it("rounds half away from zero, symmetrically", () => {
-    expect(roundToMinor(1.005, 2).units).toBe(101);
-    expect(roundToMinor(-1.005, 2).units).toBe(-101);
-    expect(roundToMinor(2.675, 2).units).toBe(268);
-    expect(roundToMinor(-2.675, 2).units).toBe(-268);
+  it("rounds the double it is given, not the decimal someone meant to type", () => {
+    // 1.005 is not representable: the nearest double is 1.0049999999999998934,
+    // so the correct answer at two places is 1.00. An earlier version nudged the
+    // value upward by 4 ULP to make this return 1.01, which over-corrected by
+    // eight times and broke large amounts. Recovering a typed decimal is
+    // recoverMinor's job; this function rounds a computed real.
+    expect(roundToMinor(1.005, 2).units).toBe(100);
+    expect(roundToMinor(-1.005, 2).units).toBe(-100);
+    // A value genuinely at or above the half still rounds away from zero.
+    expect(roundToMinor(1.0051, 2).units).toBe(101);
+    expect(roundToMinor(0.125, 2).units).toBe(13);
+    expect(roundToMinor(-0.125, 2).units).toBe(-13);
+  });
+
+  it("does not change an amount converted at a rate of exactly 1.0", () => {
+    // The old epsilon nudge failed this: 1e15 minor units came back as
+    // 1000000000000001, growing by one unit for doing nothing.
+    for (const units of [1, 100, 1e9, 1e13, 1e15]) {
+      expect(convertMinor({ units, places: 2 }, 1, 2).units, String(units)).toBe(units);
+    }
+  });
+
+  it("leaves an exact integer input exactly alone", () => {
+    expect(roundToMinor(1e13, 2).units).toBe(1e15);
+    expect(roundToMinor(1e9, 6).units).toBe(1e15);
   });
 
   it("is symmetric under sign flip for every case it rounds", () => {

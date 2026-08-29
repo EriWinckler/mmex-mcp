@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { MmexDatabase } from "../db/connection.js";
-import { formatMinor, type Minor, toMajor } from "../money/money.js";
+import { formatMinor, type Minor } from "../money/money.js";
 import type { RateBasis } from "../semantics/analytics.js";
 import type { CurrencyResolver } from "../semantics/currency.js";
 
@@ -20,17 +20,28 @@ import type { CurrencyResolver } from "../semantics/currency.js";
  */
 
 export const amountSchema = z.object({
-  /** Exact decimal string. This is the authoritative value. */
-  formatted: z.string().describe("Exact decimal string, in the base currency. Report this as given."),
-  /** Convenience for arithmetic. Subject to float representation, unlike `formatted`. */
-  value: z.number().describe("Numeric form, for comparison only. `formatted` is authoritative."),
+  text: z
+    .string()
+    .describe("Exact decimal string. Quote this to the user verbatim; it cannot lose precision."),
+  minor: z
+    .number()
+    .int()
+    .describe("Integer minor units, e.g. cents. Use this for arithmetic, never the decimal form."),
+  places: z.number().int().describe("Decimal places for this currency: 2 for USD, 0 for JPY."),
   currency: z.string(),
 });
 
 export type AmountPayload = z.infer<typeof amountSchema>;
 
-export function amount(minor: Minor, currency: string): AmountPayload {
-  return { formatted: formatMinor(minor), value: toMajor(minor), currency };
+/**
+ * Money on the wire.
+ *
+ * `text` is authoritative and `minor` is what arithmetic should use. A plain
+ * decimal number is deliberately not offered: handing back 30.299999999999997
+ * after taking the trouble to avoid it internally would be self-defeating.
+ */
+export function amount(value: Minor, currency: string): AmountPayload {
+  return { text: formatMinor(value), minor: value.units, places: value.places, currency };
 }
 
 export const basisSchema = z.object({
@@ -107,6 +118,44 @@ export function page(args: {
     totalMatching,
     truncated: more,
     nextOffset: more ? offset + returned : null,
+  };
+}
+
+/**
+ * Coverage of a capped AGGREGATE, which is a different failure from a capped
+ * row list and cannot share its shape.
+ *
+ * Omitted rows in a row list are retrievable: raise the offset. Omitted groups
+ * in an aggregate are not, and the danger is different: a reader who adds up the
+ * visible groups gets a figure short by the whole tail. `other` closes that,
+ * so `sum(shown) + other = total` is checkable rather than assumed.
+ */
+export const coverageSchema = z.object({
+  groupsReturned: z.number().int(),
+  groupsTotal: z.number().int().describe("Groups matching before the cap was applied."),
+  truncated: z.boolean(),
+  other: z
+    .object({
+      groups: z.number().int().describe("How many groups are folded into this remainder."),
+      amount: amountSchema,
+    })
+    .describe("Everything below the cap, as one figure. Shown groups plus this equals the total."),
+});
+
+export type CoveragePayload = z.infer<typeof coverageSchema>;
+
+export function coverage(args: {
+  groupsReturned: number;
+  groupsTotal: number;
+  otherGroups: number;
+  otherAmount: Minor;
+  currency: string;
+}): CoveragePayload {
+  return {
+    groupsReturned: args.groupsReturned,
+    groupsTotal: args.groupsTotal,
+    truncated: args.otherGroups > 0,
+    other: { groups: args.otherGroups, amount: amount(args.otherAmount, args.currency) },
   };
 }
 

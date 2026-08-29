@@ -282,3 +282,66 @@ describe("CategoryTree", () => {
     expect(tree.orphaned).toHaveLength(2);
   });
 });
+
+describe("a corrupt currency row cannot poison the rest", () => {
+  function currencyDb(extraHistory: string, extraCurrency = ""): MmexDatabase {
+    const d = mkdtempSync(join(tmpdir(), "mmex-cur-"));
+    const path = join(d, "c.mmb");
+    const w = new Database(path);
+    for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
+    w.exec(
+      "INSERT INTO INFOTABLE_V1 (INFONAME,INFOVALUE) VALUES ('BaseCurrencyID','1');" +
+        "INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID,CURRENCYNAME,PFX_SYMBOL,SFX_SYMBOL,DECIMAL_POINT,GROUP_SEPARATOR,UNIT_NAME,CENT_NAME,SCALE,BASECONVRATE,CURRENCY_SYMBOL,CURRENCY_TYPE)" +
+        " VALUES (1,'USD','$','','.',',','','',100,1.0,'USD','Base')," +
+        "        (2,'EUR','E','','.',',','','',100,2.0,'EUR','Other')" +
+        extraCurrency +
+        ";" +
+        "INSERT INTO CURRENCYHISTORY_V1 (CURRENCYID,CURRDATE,CURRVALUE,CURRUPDTYPE)" +
+        " VALUES (2,'2026-01-01',1.10,1),(2,'2026-06-01',1.20,1)" +
+        extraHistory +
+        ";",
+    );
+    w.close();
+    return openReadOnly(path);
+  }
+
+  it("ignores a CURRENCYHISTORY row whose date cannot be parsed", () => {
+    // A single malformed CURRDATE used to win every lookup for that currency:
+    // date() returns NULL, NULL sorts first, and in JS `null < "2026-05-01"` is
+    // false, so the junk row became the "nearest" rate for every date and every
+    // converted amount was multiplied by an arbitrary number.
+    const clean = currencyDb("");
+    const cleanResolver = new CurrencyResolver(clean);
+    expect(cleanResolver.rateFor(2, "2026-02-01")).toBe(1.1);
+    expect(cleanResolver.rateFor(2, "2026-05-01")).toBe(1.2);
+    clean.close();
+
+    const dirty = currencyDb(",(2,'not-a-date',99.0,1)");
+    const dirtyResolver = new CurrencyResolver(dirty);
+    expect(dirtyResolver.rateFor(2, "2026-02-01")).toBe(1.1);
+    expect(dirtyResolver.rateFor(2, "2026-05-01")).toBe(1.2);
+    expect(dirtyResolver.rateFor(2, "1990-01-01")).toBe(1.1);
+    dirty.close();
+  });
+
+  it("ignores a non-positive rate rather than zeroing every conversion", () => {
+    const db2 = currencyDb(",(2,'2026-03-01',0,1),(2,'2026-04-01',-5,1)");
+    const resolver = new CurrencyResolver(db2);
+    expect(resolver.rateFor(2, "2026-03-01")).toBeGreaterThan(0);
+    expect(resolver.rateFor(2, "2026-04-01")).toBeGreaterThan(0);
+    db2.close();
+  });
+
+  it("keeps working when one currency row is unusable", () => {
+    // The constructor runs over every currency in the file, including ones
+    // nothing references. One bad row must degrade that currency alone.
+    const db2 = currencyDb("", ",(3,'Weird','W','','.',',','','',0,0,'WRD','Other')");
+    const resolver = new CurrencyResolver(db2);
+    expect(resolver.info(1)?.symbol).toBe("USD");
+    expect(resolver.info(2)?.symbol).toBe("EUR");
+    expect(resolver.basePlaces).toBe(2);
+    // A zero SCALE falls back rather than throwing, so the row still resolves.
+    expect(resolver.info(3)?.places).toBe(2);
+    db2.close();
+  });
+});

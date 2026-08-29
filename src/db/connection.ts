@@ -2,6 +2,7 @@ import { chmodSync, closeSync, mkdtempSync, openSync, readSync, rmSync, statSync
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import Database from "better-sqlite3";
+import { log } from "../log/logger.js";
 
 /**
  * Read-only access to an MMEX database.
@@ -54,6 +55,13 @@ export interface OpenOptions {
   readonly snapshot?: boolean;
   /** How long to wait on a locked database before failing. Default 5000ms. */
   readonly busyTimeoutMs?: number;
+  /**
+   * How long the snapshot copy may wait on a busy database. Default 30s.
+   *
+   * Deliberately much longer than the query timeout: this happens once at
+   * startup, and waiting beats failing.
+   */
+  readonly snapshotTimeoutMs?: number;
 }
 
 /** Evidence that this handle cannot write, gathered by actually trying. */
@@ -141,18 +149,23 @@ function assertReadableSqliteFile(path: string): void {
  * VACUUM INTO is WAL-aware, produces a consistent copy from a read-only handle,
  * and verifies structure on the way through.
  */
-function snapshotTo(sourcePath: string, destinationPath: string): void {
+function snapshotTo(sourcePath: string, destinationPath: string, timeoutMs: number): void {
   let source: Database.Database | undefined;
   try {
-    source = new Database(sourcePath, { readonly: true, fileMustExist: true });
+    // better-sqlite3 defaults to a 5 second busy timeout. VACUUM INTO holds a
+    // read transaction for its whole duration, so against a continuously
+    // writing Money Manager EX in rollback-journal mode the default is not
+    // enough and the snapshot fails rather than waiting. This runs once at
+    // startup, so a slow snapshot is much better than a failed one.
+    source = new Database(sourcePath, { readonly: true, fileMustExist: true, timeout: timeoutMs });
     // Single-quote escaping: SQLite has no parameter binding for VACUUM INTO.
     source.exec(`VACUUM INTO '${destinationPath.replace(/'/g, "''")}'`);
   } catch (error) {
     const code = (error as { code?: string }).code;
     if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") {
       throw new MmexDatabaseError(
-        `Database is locked and could not be snapshotted: ${sourcePath}`,
-        "Close Money Manager EX and try again.",
+        `Database stayed busy for ${Math.round(timeoutMs / 1000)}s and could not be snapshotted: ${sourcePath}`,
+        "Money Manager EX is writing to it continuously, perhaps an import. Wait for that to finish, or run without --snapshot.",
       );
     }
     throw error;
@@ -170,9 +183,18 @@ export function openReadOnly(path: string, options: OpenOptions = {}): MmexDatab
     tempDir = mkdtempSync(join(tmpdir(), "mmex-mcp-"));
     openedPath = join(tempDir, basename(path));
     try {
-      snapshotTo(path, openedPath);
+      const startedAt = Date.now();
+      snapshotTo(path, openedPath, options.snapshotTimeoutMs ?? 30_000);
       // mkdtemp is already 0700; make the copy itself explicit too.
       chmodSync(openedPath, 0o600);
+      // A six second startup is otherwise indistinguishable from a hang, and
+      // the compaction ratio is genuinely useful: VACUUM INTO drops free pages,
+      // so the copy is usually smaller than the source.
+      log.info("snapshot complete", {
+        ms: Date.now() - startedAt,
+        sourceBytes: statSync(path).size,
+        snapshotBytes: statSync(openedPath).size,
+      });
     } catch (error) {
       // Without this, a failed copy (a full disk being the usual cause) leaves
       // a partial copy of the user's financial database in the temp directory.

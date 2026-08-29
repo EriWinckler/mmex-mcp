@@ -32,6 +32,8 @@ export class CurrencyResolver {
   private readonly rateCache = new Map<string, number>();
   readonly baseCurrencyId: number;
   readonly useCurrencyHistory: boolean;
+  /** Currencies whose definition could not be read. Reported, not swallowed. */
+  readonly unresolvable: number[] = [];
 
   constructor(private readonly db: MmexDatabase) {
     for (const row of db.query<{
@@ -41,13 +43,20 @@ export class CurrencyResolver {
       SCALE: number | null;
       BASECONVRATE: number | null;
     }>("SELECT CURRENCYID, CURRENCY_SYMBOL, CURRENCYNAME, SCALE, BASECONVRATE FROM CURRENCYFORMATS_V1")) {
-      this.currencies.set(row.CURRENCYID, {
-        id: row.CURRENCYID,
-        symbol: row.CURRENCY_SYMBOL,
-        name: row.CURRENCYNAME,
-        places: placesFromScale(row.SCALE),
-        baseConvRate: row.BASECONVRATE ?? 1,
-      });
+      // Per-row containment: this loop runs over every currency in the file,
+      // including ones nothing references. One unusable row must degrade that
+      // currency, not take down every currency-aware tool in the server.
+      try {
+        this.currencies.set(row.CURRENCYID, {
+          id: row.CURRENCYID,
+          symbol: row.CURRENCY_SYMBOL,
+          name: row.CURRENCYNAME,
+          places: placesFromScale(row.SCALE),
+          baseConvRate: row.BASECONVRATE !== null && row.BASECONVRATE > 0 ? row.BASECONVRATE : 1,
+        });
+      } catch {
+        this.unresolvable.push(row.CURRENCYID);
+      }
     }
 
     // INFOTABLE_V1.BASECURRENCYID, default -1 (src/model/PrefModel.cpp:260).
@@ -86,7 +95,14 @@ export class CurrencyResolver {
     if (rows === undefined) {
       rows = this.db
         .query<{ CURRDATE: string; CURRVALUE: number }>(
-          "SELECT date(CURRDATE) CURRDATE, CURRVALUE FROM CURRENCYHISTORY_V1 WHERE CURRENCYID = ? ORDER BY date(CURRDATE)",
+          // date() yields NULL for a value SQLite cannot parse, and CURRDATE
+          // carries no format constraint. Such a row must be dropped here: it
+          // sorts first, compares falsely against a real date in JS, and would
+          // otherwise be selected as the nearest rate for every lookup,
+          // silently multiplying every converted amount by an arbitrary number.
+          `SELECT date(CURRDATE) CURRDATE, CURRVALUE FROM CURRENCYHISTORY_V1
+            WHERE CURRENCYID = ? AND date(CURRDATE) IS NOT NULL AND CURRVALUE > 0
+            ORDER BY date(CURRDATE)`,
           [currencyId],
         )
         .map((r) => ({ date: r.CURRDATE, rate: r.CURRVALUE }));
@@ -141,6 +157,9 @@ export class CurrencyResolver {
     if (prev !== undefined && next !== undefined) {
       const prevDays = daysBetween(prev.date, date);
       const nextDays = daysBetween(date, next.date);
+      // Belt and braces after the SQL filter: never let a NaN comparison decide.
+      if (!Number.isFinite(prevDays)) return next.rate;
+      if (!Number.isFinite(nextDays)) return prev.rate;
       return prevDays <= nextDays ? prev.rate : next.rate;
     }
     if (prev !== undefined) return prev.rate;

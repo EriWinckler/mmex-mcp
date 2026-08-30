@@ -1,3 +1,14 @@
+/*******************************************************
+ Copyright (C) 2026 EriWinckler (efwinckler@gmail.com)
+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the MIT License. See the LICENSE file in the
+ root of this project for the full text.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ ********************************************************/
 import { closeSync, existsSync, openSync, readSync, rmSync } from "node:fs";
 import Database from "better-sqlite3";
 import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_INDEXES } from "./schema.js";

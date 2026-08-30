@@ -45,9 +45,30 @@ default. Do not force-add one. If you need data, generate it:
 **Every commit passes `npm run verify`.** The history is meant to read as
 working increments.
 
+## File headers
+
+Every `.ts` file under `src/` and `test/` opens with the copyright block:
+
+```
+/*******************************************************
+ Copyright (C) 2026 EriWinckler (efwinckler@gmail.com)
+ ...
+ ********************************************************/
+```
+
+The layout follows Money Manager EX's own source convention, which makes the
+two codebases read consistently for anyone moving between them. The license
+paragraphs are MIT rather than MMEX's GPL-2.0, since that is this project's
+license.
+
+On the two `src/bin/*.ts` entry points the shebang stays on line 1 and the
+header goes beneath it. A header above the shebang makes the published binary
+unexecutable.
+
 ## Adding a tool
 
-1. Create `src/tools/<name>.ts` exporting `register<Name>(server, context)`.
+1. Create `src/tools/<name>.ts` with the copyright header above, exporting
+   `register<Name>(server, context)`.
 2. Declare an **`outputSchema`**. Results must arrive as `structuredContent`,
    not prose.
 3. Declare **`annotations`**: `readOnlyHint: true`, `destructiveHint: false`,

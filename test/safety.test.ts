@@ -9,10 +9,10 @@
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  ********************************************************/
+import Database from "better-sqlite3";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { openReadOnly } from "../src/db/connection.js";
 import { FixtureError, GENERATED_MARKER, generateFixture } from "../src/fixture/generate.js";
@@ -120,18 +120,23 @@ describe("snapshot mode is WAL-aware", () => {
     }
   });
 
-  it("gives the snapshot copy owner-only permissions", () => {
-    const dir = scratch();
-    const { path, writer } = walDatabase(dir);
-    try {
-      const snap = openReadOnly(path, { snapshot: true });
-      const mode = statSync(snap.openedPath).mode & 0o777;
-      snap.close();
-      expect(mode).toBe(0o600);
-    } finally {
-      writer.close();
-    }
-  });
+   it.skipIf(process.platform === "win32")(
+    "gives the snapshot copy owner-only permissions",
+    () => {
+      // Windows/NTFS has no POSIX permission model — chmod can only toggle
+      // the read-only attribute, so this check isn't meaningful there.
+      const dir = scratch();
+      const { path, writer } = walDatabase(dir);
+      try {
+        const snap = openReadOnly(path, { snapshot: true });
+        const mode = statSync(snap.openedPath).mode & 0o777;
+        snap.close();
+        expect(mode).toBe(0o600);
+      } finally {
+        writer.close();
+      }
+    },
+  );
 
   it("removes the copy on close, leaving nothing in the temp directory", () => {
     const dir = scratch();

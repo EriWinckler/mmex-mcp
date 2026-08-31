@@ -120,7 +120,9 @@ describe("snapshot mode is WAL-aware", () => {
     }
   });
 
-  it("gives the snapshot copy owner-only permissions", () => {
+  it.skipIf(process.platform === "win32")("gives the snapshot copy owner-only permissions", () => {
+    // Windows/NTFS has no POSIX permission model — chmod can only toggle
+    // the read-only attribute, so this check isn't meaningful there.
     const dir = scratch();
     const { path, writer } = walDatabase(dir);
     try {

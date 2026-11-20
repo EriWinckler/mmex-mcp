@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--snapshot` mode reading a temporary copy, for when MMEX holds the database.
 - Diagnostics to stderr, off by default, enabled with `MMEX_MCP_LOG`.
 
+### Security
+
+- Updated `@modelcontextprotocol/sdk` to 1.32.2 and `zod` to 4.6.7, and
+  refreshed the transitive `body-parser`, `qs` and `fast-uri`, clearing the
+  high-severity advisories that `npm audit --omit=dev` reported against them.
+
 ### Fixed
 
 - `mmex-fixture` overwrote an existing file without warning. It now refuses

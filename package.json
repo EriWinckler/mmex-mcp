@@ -45,9 +45,9 @@
     "prepublishOnly": "npm run verify && npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "better-sqlite3": "13.0.3",
-    "zod": "4.5.2"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.11",

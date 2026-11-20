@@ -66,7 +66,7 @@ plus [docs/CONFORMANCE.md](docs/CONFORMANCE.md) is the explanation.
 
 ## Status
 
-Early. The foundation is built and tested; the analytics surface is not.
+Early, but usable. The foundation and the six analytics tools are built and tested; the answer-accuracy suite and encrypted `.emb` support are planned.
 
 | | |
 |---|---|
@@ -79,7 +79,7 @@ Early. The foundation is built and tested; the analytics surface is not.
 | Answer-accuracy regression suite | Planned |
 | Encrypted `.emb` support, optional write mode | Planned |
 
-148 tests. Typecheck and lint clean.
+179 tests, run in CI on Linux, macOS and Windows with Node 22 and 24. Typecheck and lint clean.
 
 ## Why the queries are not obvious
 

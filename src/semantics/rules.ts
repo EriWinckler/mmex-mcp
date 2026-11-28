@@ -17,8 +17,9 @@
  * turned out not to be a specification. MMEX's own published general-reports
  * SQL disagrees with the desktop app in eight places, five of them material,
  * and two of those are outright bugs in the reports. The rules below were
- * read out of the C++ source of Money Manager EX 1.9.4 RC1 (commit 35f3081)
- * rather than inferred from the schema or copied from the reports.
+ * read out of the C++ source of Money Manager EX 1.9.4 (tag v1.9.4; first read
+ * at RC1 commit 35f3081, whose src/ is identical) rather than inferred from the
+ * schema or copied from the reports.
  *
  * See docs/CONFORMANCE.md for every divergence with citations.
  */

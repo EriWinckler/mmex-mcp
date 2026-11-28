@@ -35,8 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refreshed the transitive `body-parser`, `qs` and `fast-uri`, clearing the
   high-severity advisories that `npm audit --omit=dev` reported against them.
 
+### Changed
+
+- The semantics now cite the Money Manager EX 1.9.4 release rather than its
+  RC1. Nothing in `src/` changed between the two, so no rule changed.
+
 ### Fixed
 
+- The schema-version check read `INFOTABLE_V1.DATAVERSION`, which MMEX writes
+  as `'3'` and is not the schema version, against an expected `19`. Every real
+  database was therefore reported as unverified. It now reads
+  `PRAGMA user_version`, where MMEX keeps the schema version, and expects 21,
+  the version of MMEX 1.9.2 through 1.9.4. The fixture writes both values the
+  way MMEX does.
 - `mmex-fixture` overwrote an existing file without warning. It now refuses
   unless `--force` is given, and refuses a real Money Manager EX database even
   then.

@@ -15,7 +15,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type MmexDatabase, openReadOnly } from "../src/db/connection.js";
-import { MMEX_SCHEMA_DDL } from "../src/fixture/schema.js";
+import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_VERSION } from "../src/fixture/schema.js";
 import { formatMinor } from "../src/money/money.js";
 import {
   accountBalances,
@@ -55,8 +55,9 @@ beforeAll(() => {
   const path = join(dir, "a.mmb");
   const w = new Database(path);
   for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
+  w.pragma(`user_version = ${MMEX_SCHEMA_VERSION}`);
   w.exec(`
-    INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('BaseCurrencyID','1'),('DataVersion','19');
+    INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('BaseCurrencyID','1'),('DataVersion','3');
     INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID,CURRENCYNAME,PFX_SYMBOL,SFX_SYMBOL,DECIMAL_POINT,GROUP_SEPARATOR,UNIT_NAME,CENT_NAME,SCALE,BASECONVRATE,CURRENCY_SYMBOL,CURRENCY_TYPE)
       VALUES (1,'US Dollar','$','','.',',','','',100,1.0,'USD','Base'),
              (2,'Euro','E','','.',',','','',100,2.0,'EUR','Other');
@@ -316,6 +317,7 @@ describe("a corrupt SCALE cannot silently change an amount", () => {
     const path = join(d, "s.mmb");
     const w = new Database(path);
     for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
+    w.pragma(`user_version = ${MMEX_SCHEMA_VERSION}`);
     w.exec(
       "INSERT INTO INFOTABLE_V1 (INFONAME,INFOVALUE) VALUES ('BaseCurrencyID','1');" +
         `INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID,CURRENCYNAME,PFX_SYMBOL,SFX_SYMBOL,DECIMAL_POINT,GROUP_SEPARATOR,UNIT_NAME,CENT_NAME,SCALE,BASECONVRATE,CURRENCY_SYMBOL,CURRENCY_TYPE) VALUES (1,'USD','$','','.',',','','',${scale},1.0,'USD','Base');` +

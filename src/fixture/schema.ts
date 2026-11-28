@@ -169,3 +169,10 @@ export const MMEX_SCHEMA_INDEXES: readonly string[] = [
   "CREATE INDEX IDX_SPLIT_TRANS ON SPLITTRANSACTIONS_V1(TRANSID)",
   "CREATE INDEX IDX_CURRHIST ON CURRENCYHISTORY_V1(CURRENCYID, CURRDATE)",
 ];
+
+/**
+ * The schema version MMEX 1.9.2 through 1.9.4 stamp into `PRAGMA user_version`.
+ * The fixture sets it the same way, so a generated file is recognized exactly
+ * as a real one is (see VERIFIED_SCHEMA_VERSIONS in src/db/connection.ts).
+ */
+export const MMEX_SCHEMA_VERSION = 21;

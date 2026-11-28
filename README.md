@@ -79,7 +79,7 @@ Early, but usable. The foundation and the six analytics tools are built and test
 | Answer-accuracy regression suite | Planned |
 | Encrypted `.emb` support, optional write mode | Planned |
 
-179 tests, run in CI on Linux, macOS and Windows with Node 22 and 24. Typecheck and lint clean.
+180 tests, run in CI on Linux, macOS and Windows with Node 22 and 24. Typecheck and lint clean.
 
 ## Why the queries are not obvious
 
@@ -112,7 +112,7 @@ serve as the specification:
 | Currency conversion | applied | none |
 
 This server follows the desktop application instead, read from its C++ source
-(1.9.4 RC1, commit `35f3081`), with a file and line citation for each rule.
+(1.9.4, schema version 21), with a file and line citation for each rule.
 The comparison surfaced eight divergences from the published reports, including
 two that lose data: `ExpenseAndRevenueByMonth` ignores `DELETEDTIME` entirely,
 and `CategoriesStatLast12Months` drops uncategorized non-split transactions

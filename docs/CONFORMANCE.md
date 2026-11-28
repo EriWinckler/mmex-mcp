@@ -25,8 +25,15 @@ So the reports cannot be the authority. The application is.
 
 ## Source of truth
 
-Money Manager EX **1.9.4 RC1**, commit `35f3081` (2026-08-28),
-[moneymanagerex/moneymanagerex](https://github.com/moneymanagerex/moneymanagerex).
+Money Manager EX **1.9.4**, release tag `v1.9.4` (commit `377d1f5`, 2026-08-31),
+[moneymanagerex/moneymanagerex](https://github.com/moneymanagerex/moneymanagerex),
+database schema version 21 (`PRAGMA user_version`).
+
+The rules were first read at 1.9.4 RC1 (commit `35f3081`, 2026-08-28). The
+final release changed only `NEWS` and one translation; `src/` is identical, so
+every file and line citation holds for the release. Rechecked against `master`
+on 2026-11-27 (commit `3e4285d`, unreleased, 1.9.5 RC prep): none of the files
+the rules cite changed, and the schema is still version 21.
 
 One trap for anyone verifying this: between 1.9.0 and 1.9.1 the model layer was
 renamed wholesale (`Model_Checking` to `TrxModel`/`TrxData`, `Model_Account` to

@@ -11,7 +11,7 @@
  ********************************************************/
 import { closeSync, existsSync, openSync, readSync, rmSync } from "node:fs";
 import Database from "better-sqlite3";
-import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_INDEXES } from "./schema.js";
+import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_INDEXES, MMEX_SCHEMA_VERSION } from "./schema.js";
 
 /**
  * Deterministic synthetic MMEX database.
@@ -244,6 +244,7 @@ export function generateFixture(outPath: string, options: FixtureOptions = {}): 
 
   for (const ddl of MMEX_SCHEMA_DDL) db.exec(ddl);
   for (const idx of MMEX_SCHEMA_INDEXES) db.exec(idx);
+  db.pragma(`user_version = ${MMEX_SCHEMA_VERSION}`);
 
   const startDate = addMonths(anchorDate, -months);
 
@@ -266,7 +267,7 @@ export function generateFixture(outPath: string, options: FixtureOptions = {}): 
     const info = db.prepare("INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES (?, ?)");
     for (const [k, v] of [
       ["BaseCurrencyID", "1"],
-      ["DataVersion", "19"],
+      ["DataVersion", "3"],
       ["DateFormat", "%Y-%m-%d"],
       ["CreatedAt", `${startDate} 00:00:00`],
       // Marks this file as fabricated. --force will replace a stamped file and

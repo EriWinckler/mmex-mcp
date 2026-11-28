@@ -15,7 +15,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { openReadOnly } from "../src/db/connection.js";
-import { MMEX_SCHEMA_DDL } from "../src/fixture/schema.js";
+import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_VERSION } from "../src/fixture/schema.js";
 import { accountBalances, incomeVsExpense, spendingByCategory } from "../src/semantics/analytics.js";
 import { CategoryTree } from "../src/semantics/categories.js";
 import { CurrencyResolver } from "../src/semantics/currency.js";
@@ -25,6 +25,7 @@ function build(seed: string) {
   const path = join(dir, "t.mmb");
   const db = new Database(path);
   for (const ddl of MMEX_SCHEMA_DDL) db.exec(ddl);
+  db.pragma(`user_version = ${MMEX_SCHEMA_VERSION}`);
   db.exec(seed);
   db.close();
   const h = openReadOnly(path);
@@ -32,7 +33,7 @@ function build(seed: string) {
 }
 
 const BASE = `
-INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
+INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','3'),('BaseCurrencyID','1');
 INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
   VALUES (1,'US Dollar','USD','Fiat',100,1.0);
 INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, STATUS, FAVORITEACCT, CURRENCYID, INITIALBAL)
@@ -76,7 +77,7 @@ describe("scratch: doc-vs-code", () => {
 
   it("SCALE=0: every amount collapses to zero", () => {
     const { h, resolver, tree } = build(`
-      INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
+      INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','3'),('BaseCurrencyID','1');
       INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
         VALUES (1,'Odd','ODD','Fiat',0,1.0);
       INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,FAVORITEACCT,CURRENCYID,INITIALBAL)
@@ -97,7 +98,7 @@ describe("scratch: doc-vs-code", () => {
 
   it("SCALE=3 (not a power of ten): SQL and places disagree", () => {
     const { h, resolver, tree } = build(`
-      INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
+      INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','3'),('BaseCurrencyID','1');
       INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
         VALUES (1,'Odd','ODD','Fiat',3,1.0);
       INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,FAVORITEACCT,CURRENCYID,INITIALBAL)
@@ -115,7 +116,7 @@ describe("scratch: doc-vs-code", () => {
 
   it("negative SCALE flips signs", () => {
     const { h, resolver, tree } = build(`
-      INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19'),('BaseCurrencyID','1');
+      INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','3'),('BaseCurrencyID','1');
       INSERT INTO CURRENCYFORMATS_V1 (CURRENCYID, CURRENCYNAME, CURRENCY_SYMBOL, CURRENCY_TYPE, SCALE, BASECONVRATE)
         VALUES (1,'Odd','ODD','Fiat',-100,1.0);
       INSERT INTO ACCOUNTLIST_V1 (ACCOUNTID,ACCOUNTNAME,ACCOUNTTYPE,STATUS,FAVORITEACCT,CURRENCYID,INITIALBAL)

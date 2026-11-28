@@ -17,7 +17,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { openReadOnly } from "../src/db/connection.js";
 import { FixtureError, GENERATED_MARKER, generateFixture } from "../src/fixture/generate.js";
-import { MMEX_SCHEMA_DDL } from "../src/fixture/schema.js";
+import { MMEX_SCHEMA_DDL, MMEX_SCHEMA_VERSION } from "../src/fixture/schema.js";
 import { isForeignAsTransfer, liveRows } from "../src/semantics/rules.js";
 
 const dirs: string[] = [];
@@ -49,6 +49,7 @@ describe("the fixture generator cannot destroy data", () => {
     const real = join(dir, "finances.mmb");
     const db = new Database(real);
     for (const ddl of MMEX_SCHEMA_DDL) db.exec(ddl);
+    db.pragma(`user_version = ${MMEX_SCHEMA_VERSION}`);
     db.close();
     const before = statSync(real).size;
 
@@ -94,7 +95,8 @@ describe("snapshot mode is WAL-aware", () => {
     const w = new Database(path);
     w.pragma("journal_mode = WAL");
     for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
-    w.exec("INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','19')");
+    w.pragma(`user_version = ${MMEX_SCHEMA_VERSION}`);
+    w.exec("INSERT INTO INFOTABLE_V1 (INFONAME, INFOVALUE) VALUES ('DataVersion','3')");
     const insert = w.prepare(
       `INSERT INTO CHECKINGACCOUNT_V1
        (TRANSID,ACCOUNTID,TOACCOUNTID,PAYEEID,TRANSCODE,TRANSAMOUNT,STATUS,CATEGID,TRANSDATE,DELETEDTIME,TOTRANSAMOUNT)
@@ -158,6 +160,7 @@ describe("isForeignAsTransfer", () => {
     const path = join(dir, "f.mmb");
     const w = new Database(path);
     for (const ddl of MMEX_SCHEMA_DDL) w.exec(ddl);
+    w.pragma(`user_version = ${MMEX_SCHEMA_VERSION}`);
     w.exec(rows);
     w.close();
     return openReadOnly(path);

@@ -97,8 +97,8 @@ Mixing precisions throws rather than producing a plausible wrong total.
 
 ### semantics: the part that is actually hard
 
-Every rule here is transcribed from Money Manager EX 1.9.4 RC1 (commit
-`35f3081`) with a file and line citation in the source comments, because MMEX's
+Every rule here is transcribed from Money Manager EX 1.9.4 (tag `v1.9.4`,
+schema version 21) with a file and line citation in the source comments, because MMEX's
 own published reports contradict both the application and each other. See
 [CONFORMANCE.md](CONFORMANCE.md).
 

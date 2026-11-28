@@ -112,18 +112,34 @@ describe("schema compatibility", () => {
     const { path, dir } = makeTinyMmexDb();
     cleanup.push(dir);
     const db = openReadOnly(path);
-    expect(db.schema.version).toBe("19");
+    expect(db.schema.version).toBe("21");
     expect(db.schema.verified).toBe(true);
     expect(db.schema.warning).toBeNull();
+    db.close();
+  });
+
+  it("reads the schema version from PRAGMA user_version, not INFOTABLE_V1.DataVersion", () => {
+    // A real MMEX 1.9.x file carries DATAVERSION '3' and user_version 21.
+    // Reading DataVersion made every real file look unverified.
+    const { path, dir } = makeTinyMmexDb();
+    cleanup.push(dir);
+    const w = new Database(path);
+    w.prepare("UPDATE INFOTABLE_V1 SET INFOVALUE = ? WHERE INFONAME = ?").run("21", "DataVersion");
+    w.pragma("user_version = 20");
+    w.close();
+
+    const db = openReadOnly(path);
+    expect(db.schema.version).toBe("20");
+    expect(db.schema.verified).toBe(false);
     db.close();
   });
 
   it("warns rather than silently trusting an unknown schema version", () => {
     const { path, dir } = makeTinyMmexDb();
     cleanup.push(dir);
-    // Rewrite DataVersion to something these semantics were never checked against.
+    // Stamp a schema version these semantics were never checked against.
     const w = new Database(path);
-    w.prepare("UPDATE INFOTABLE_V1 SET INFOVALUE = ? WHERE INFONAME = ?").run("99", "DataVersion");
+    w.pragma("user_version = 99");
     w.close();
 
     const db = openReadOnly(path);
@@ -137,7 +153,7 @@ describe("schema compatibility", () => {
     const { path, dir } = makeTinyMmexDb();
     cleanup.push(dir);
     const w = new Database(path);
-    w.exec("DELETE FROM INFOTABLE_V1 WHERE INFONAME = 'DataVersion'");
+    w.pragma("user_version = 0");
     w.close();
 
     const db = openReadOnly(path);
@@ -154,7 +170,7 @@ describe("metadata", () => {
     cleanup.push(dir);
     const db = openReadOnly(path);
     expect(db.info.get("basecurrencyid")).toBe("1");
-    expect(db.info.get("dataversion")).toBe("19");
+    expect(db.info.get("dataversion")).toBe("3");
     db.close();
   });
 });
@@ -167,6 +183,8 @@ describe("snapshot mode", () => {
     expect(db.openedPath).not.toBe(path);
     expect(db.sourcePath).toBe(path);
     expect(existsSync(db.openedPath)).toBe(true);
+    expect(db.schema.version).toBe("21"); // user_version survives the copy
+    expect(db.schema.verified).toBe(true);
     const copyPath = db.openedPath;
     db.close();
     expect(existsSync(copyPath)).toBe(false); // temp copy cleaned up

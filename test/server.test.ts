@@ -96,7 +96,7 @@ describe("mmex_database_info", () => {
         currencies: string[];
       };
     };
-    expect(structured.database.schemaVersion).toBe("19");
+    expect(structured.database.schemaVersion).toBe("21");
     expect(structured.database.baseCurrency).toBe("USD");
     expect(structured.contents.accounts).toBe(4);
     expect(structured.contents.currencies).toEqual(["USD", "EUR", "JPY"]);
@@ -144,7 +144,7 @@ describe("mmex_database_info", () => {
         database: { schemaVersion: string; schemaVerified: boolean; schemaWarning: string | null };
       }
     ).database;
-    expect(database.schemaVersion).toBe("19");
+    expect(database.schemaVersion).toBe("21");
     expect(database.schemaVerified).toBe(true);
     expect(database.schemaWarning).toBeNull();
     await client.close();

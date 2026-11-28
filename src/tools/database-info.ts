@@ -21,7 +21,12 @@ const outputSchema = {
       .string()
       .describe("File name of the database. The full path is deliberately not exposed."),
     usingSnapshot: z.boolean().describe("Whether a temporary copy is being read instead of the live file."),
-    schemaVersion: z.string().nullable().describe("MMEX DataVersion from INFOTABLE_V1."),
+    schemaVersion: z
+      .string()
+      .nullable()
+      .describe(
+        "MMEX schema version, from PRAGMA user_version (21 for Money Manager EX 1.9.2 through 1.9.4).",
+      ),
     schemaVerified: z
       .boolean()
       .describe("Whether these semantics were verified against this schema version."),

@@ -38,11 +38,18 @@ const REQUIRED_TABLES = ["ACCOUNTLIST_V1", "CHECKINGACCOUNT_V1", "CATEGORY_V1", 
 /**
  * MMEX schema versions this server's semantics were verified against.
  *
- * The rules in src/semantics were read from Money Manager EX 1.9.4's source.
+ * The rules in src/semantics were read from Money Manager EX 1.9.4's source,
+ * whose schema is version 21 (`dbLatestVersion`, src/table/_TableUpgrade.h:20).
  * A newer schema may change them, and silently returning numbers derived from
  * stale rules is worse than saying so, hence the warning.
+ *
+ * MMEX keeps the schema version in `PRAGMA user_version`: it writes it there
+ * (src/db/dbupgrade.cpp:91) and upgrades every file it opens to the latest
+ * version first (src/app/mmFrame.cpp:2476). INFOTABLE_V1.DATAVERSION is a
+ * different number, an application data version that 1.9.4 writes as '3'
+ * (src/table/InfoTable.cpp:143), and must not be read as the schema version.
  */
-export const VERIFIED_SCHEMA_VERSIONS = ["19"] as const;
+export const VERIFIED_SCHEMA_VERSIONS = ["21"] as const;
 
 export class MmexDatabaseError extends Error {
   override readonly name = "MmexDatabaseError";
@@ -262,7 +269,9 @@ export function openReadOnly(path: string, options: OpenOptions = {}): MmexDatab
     }
   }
 
-  const version = info.get("dataversion") ?? null;
+  // SQLite reports 0 for a file that never set user_version.
+  const userVersion = db.pragma("user_version", { simple: true }) as number;
+  const version = userVersion !== 0 ? String(userVersion) : null;
   const verified = version !== null && (VERIFIED_SCHEMA_VERSIONS as readonly string[]).includes(version);
   const schema: SchemaCompatibility = {
     version,
@@ -270,7 +279,7 @@ export function openReadOnly(path: string, options: OpenOptions = {}): MmexDatab
     warning: verified
       ? null
       : version === null
-        ? "This database reports no schema version (INFOTABLE_V1.DataVersion is absent). Results are unverified."
+        ? "This database reports no schema version (PRAGMA user_version is 0). Results are unverified."
         : `This database reports schema version ${version}, but these semantics were verified against ${VERIFIED_SCHEMA_VERSIONS.join(", ")}. Results may be wrong if the schema changed.`,
   };
 
